@@ -8,7 +8,7 @@ class NoPings(commands.Cog):
         self.bot = bot
         # Unique 10-digit ID for data storage
         self.config = Config.get_conf(self, identifier=8473920194, force_registration=True)
-
+        
         default_guild = {
             "enabled": False,
             "blocked_users": []
@@ -44,7 +44,7 @@ class NoPings(commands.Cog):
         await self.config.guild(ctx.guild).enabled.set(new_state)
 
         emoji = "✅" if new_state else "❌"
-
+        
         try:
             await ctx.message.add_reaction(emoji)
         except discord.HTTPException:
@@ -102,26 +102,35 @@ class NoPings(commands.Cog):
         )
 
     @nopings.command(name="test")
-    async def test_ping(self, ctx: commands.Context):
-        """Sends a reply to test if your ping suppression is working."""
+    async def test_ping(self, ctx: commands.Context, target: discord.Member = None):
+        """Test reply ping status on yourself or another user."""
+        target_user = target or ctx.author
         enabled = await self.config.guild(ctx.guild).enabled()
         blocked_users = await self.config.guild(ctx.guild).blocked_users()
-        is_user_blocked = ctx.author.id in blocked_users
+        is_user_blocked = target_user.id in blocked_users
+
+        should_suppress = enabled or is_user_blocked
 
         if enabled:
             emoji = "✅"
-            msg = "✅ Ping suppression is active for the whole server right now. (No ping for you!)"
+            msg = f"✅ Reply ping suppression is **active** server-wide. Mentioning {target_user.mention} will **not** ping them."
         elif is_user_blocked:
             emoji = "✅"
-            msg = f"✅ You're on the no-ping list, **{ctx.author.display_name}**! (No ping for you!)"
+            msg = f"✅ **{target_user.display_name}** is on the no-ping list. Mentioning {target_user.mention} will **not** ping them."
         else:
             emoji = "❌"
-            msg = "❌ No-ping mode is off for you, so this reply will ping like normal."
+            msg = f"❌ No-ping mode is **off** for **{target_user.display_name}**. Mentioning {target_user.mention} **will** ping them."
 
         try:
             await ctx.message.add_reaction(emoji)
         except discord.HTTPException:
             pass
 
-        await ctx.reply(msg)
-  
+        # Configure allowed_mentions manually for this test reply
+        allowed = discord.AllowedMentions(
+            users=[target_user],
+            replied_user=not should_suppress
+        )
+
+        await ctx.reply(msg, allowed_mentions=allowed)
+        
