@@ -1,0 +1,11 @@
+{
+  "author": ["sinofstrife"],
+  "name": "NoPings",
+  "short": "Suppresses reply pings globally or for specific users.",
+  "description": "Prevents the bot from using ping replies globally across the server or for specifically targeted users.",
+  "tags": ["utility", "pings", "replies"],
+  "min_bot_version": "3.5.0",
+  "hidden": false,
+  "disabled": false,
+  "type": "COG"
+}
