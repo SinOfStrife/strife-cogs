@@ -55,44 +55,37 @@ class Fox(commands.Cog):
             return None
 
     async def _get_reddit_fox(self) -> str:
-        """Fetch a fox post from a fox subreddit"""
-        subreddits = ["foxes", "Foxes", "IllegallySmolFoxes"]
-        subreddit = random.choice(subreddits)
-        api_url = f"https://www.reddit.com/r/{subreddit}/top.json"
+        """Fetch a fox post from r/foxes"""
+        api_url = "https://www.reddit.com/r/foxes/hot.json"
 
         try:
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+                "User-Agent": "Python/3.8 (Red-DiscordBot; +https://github.com/Cog-Creators/Red-DiscordBot)"
             }
-            params = {"limit": 25, "t": "week"}
 
             async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, headers=headers, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                async with session.get(api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status != 200:
                         return None
 
                     data = await response.json()
-                    children = data.get("data", {}).get("children", [])
-                    if not children:
+                    posts = data.get("data", {}).get("children", [])
+
+                    if not posts:
                         return None
 
-                    for item in children:
-                        post = item.get("data", {})
-                        url = post.get("url")
-                        if not url:
-                            continue
+                    # Shuffle to get random post from the list
+                    random.shuffle(posts)
 
-                        if url.endswith((".jpg", ".jpeg", ".png", ".gif", ".gifv")):
+                    for post in posts:
+                        url = post.get("data", {}).get("url", "")
+
+                        # Accept direct image URLs
+                        if url.endswith((".jpg", ".jpeg", ".png", ".gif")):
                             return url
 
-                    # If the top posts aren't image URLs, try a second pass
-                    for item in children:
-                        post = item.get("data", {})
-                        url = post.get("url")
-                        if not url:
-                            continue
-
-                        if "i.redd.it" in url or "i.imgur.com" in url:
+                        # Accept imgur and reddit hosting
+                        if "imgur.com" in url or "i.redd.it" in url:
                             return url
 
         except Exception:
