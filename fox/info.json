@@ -1,11 +1,12 @@
 {
-    "author": ["sinofstrife"],
-    "install_msg": "Thanks for installing Fox! Run [p]fox to get a random cute fox.",
-    "name": "fox",
-    "short": "Sends a random cute fox picture.",
-    "description": "Fetches a random fox image from the public RandomFox API.",
-    "tags": ["fun", "animals", "fox"],
+    "author": ["Strife"],
+    "install_msg": "Thanks for installing Fox!",
+    "name": "Fox",
+    "short": "Sends a random fox.",
+    "description": "Fetches a random fox image.",
+    "tags": ["fun", "animals"],
     "requirements": [],
     "hidden": false,
-    "type": "COG"
+    "type": "COG",
+    "end_user_data_statement": "This cog does not persistently store any personal or user data."
 }
