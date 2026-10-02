@@ -16,15 +16,11 @@ class Fox(commands.Cog):
     async def fox(self, ctx: commands.Context):
         """Get a random cute fox image or GIF!"""
 
-        sources = [
-            self._get_randomfox,
-            self._get_reddit_fox,
-        ]
-
         async with ctx.typing():
             try:
-                source = random.choice(sources)
-                image_url = await source()
+                image_url = await self._get_randomfox()
+                if not image_url:
+                    image_url = await self._get_reddit_fox()
 
                 if not image_url:
                     return await ctx.send("❌ Could not find a fox right now. Try again later!")
@@ -59,22 +55,47 @@ class Fox(commands.Cog):
             return None
 
     async def _get_reddit_fox(self) -> str:
-        """Fetch from a fox-specific subreddit"""
+        """Fetch a fox post from a fox subreddit"""
         subreddits = ["foxes", "Foxes", "IllegallySmolFoxes"]
         subreddit = random.choice(subreddits)
-        api_url = f"https://www.reddit.com/r/{subreddit}/random.json"
+        api_url = f"https://www.reddit.com/r/{subreddit}/top.json"
 
         try:
-            headers = {"User-Agent": "Mozilla/5.0"}
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            }
+            params = {"limit": 25, "t": "week"}
+
             async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if not data or not data[0].get("data", {}).get("children"):
-                            return None
-                        post = data[0]["data"]["children"][0]["data"]
+                async with session.get(api_url, headers=headers, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    if response.status != 200:
+                        return None
+
+                    data = await response.json()
+                    children = data.get("data", {}).get("children", [])
+                    if not children:
+                        return None
+
+                    for item in children:
+                        post = item.get("data", {})
                         url = post.get("url")
-                        if url and url.endswith((".jpg", ".jpeg", ".png", ".gif", ".gifv")):
+                        if not url:
+                            continue
+
+                        if url.endswith((".jpg", ".jpeg", ".png", ".gif", ".gifv")):
                             return url
+
+                    # If the top posts aren't image URLs, try a second pass
+                    for item in children:
+                        post = item.get("data", {})
+                        url = post.get("url")
+                        if not url:
+                            continue
+
+                        if "i.redd.it" in url or "i.imgur.com" in url:
+                            return url
+
         except Exception:
             return None
+
+        return None
