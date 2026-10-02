@@ -63,19 +63,16 @@ class Fox(commands.Cog):
         return None, None
 
     async def _get_reddit_fox(self):
-        """Fetch from r/foxes"""
-        subreddits = ["foxes", "Foxes", "IllegallySmolFoxes"]
-        subreddit = random.choice(subreddits)
-        api_url = f"https://www.reddit.com/r/{subreddit}/hot.json"
+        """Fetch from r/foxes using direct image search"""
+        api_url = "https://www.reddit.com/r/foxes/new.json"
 
         try:
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+                "User-Agent": "DiscordBot/1.0"
             }
-            params = {"limit": 25}
 
             async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, headers=headers, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                async with session.get(api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status != 200:
                         return None, None
 
@@ -88,14 +85,29 @@ class Fox(commands.Cog):
                     random.shuffle(posts)
 
                     for item in posts:
-                        post = item.get("data", {})
-                        url = post.get("url", "")
-
-                        if url.endswith((".jpg", ".jpeg", ".png", ".gif", ".gifv")):
-                            return url, "Reddit"
-
-                        if "imgur.com" in url or "i.redd.it" in url:
-                            return url, "Reddit"
+                        try:
+                            post_data = item.get("data", {})
+                            
+                            # Check if it's a direct image post
+                            if post_data.get("is_self"):
+                                continue
+                            
+                            url = post_data.get("url", "")
+                            
+                            # Direct image extensions
+                            if url.endswith((".jpg", ".jpeg", ".png", ".gif", ".gifv")):
+                                return url, "Reddit"
+                            
+                            # Reddit hosted images
+                            if "i.redd.it" in url:
+                                return url, "Reddit"
+                            
+                            # Imgur links
+                            if "imgur.com" in url and not url.endswith(".gifv"):
+                                if url.endswith((".jpg", ".png", ".gif")):
+                                    return url, "Reddit"
+                        except Exception:
+                            continue
 
         except Exception:
             pass
