@@ -1,6 +1,5 @@
 import aiohttp
 import discord
-import random
 from redbot.core import commands
 from redbot.core.bot import Red
 
@@ -18,13 +17,7 @@ class Fox(commands.Cog):
 
         async with ctx.typing():
             try:
-                sources = [self._get_randomfox, self._get_reddit_fox]
-                source_func = random.choice(sources)
-                image_url, source = await source_func()
-
-                if not image_url:
-                    other_source = [s for s in sources if s != source_func][0]
-                    image_url, source = await other_source()
+                image_url = await self._get_fox()
 
                 if not image_url:
                     return await ctx.send("❌ Could not find a fox right now. Try again later!")
@@ -35,7 +28,7 @@ class Fox(commands.Cog):
                 )
                 embed.set_image(url=image_url)
                 embed.set_footer(
-                    text=f"Requested by {ctx.author.display_name} | Source: {source}",
+                    text=f"Requested by {ctx.author.display_name}",
                     icon_url=ctx.author.display_avatar.url
                 )
 
@@ -46,7 +39,7 @@ class Fox(commands.Cog):
             except Exception:
                 await ctx.send("❌ An unexpected error occurred while fetching a fox.")
 
-    async def _get_randomfox(self):
+    async def _get_fox(self):
         """Fetch from randomfox.ca"""
         api_url = "https://randomfox.ca/floof/"
         try:
@@ -54,51 +47,7 @@ class Fox(commands.Cog):
                 async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status == 200:
                         data = await response.json()
-                        image_url = data.get("image")
-                        if image_url:
-                            return image_url, "randomfox.ca"
+                        return data.get("image")
         except Exception:
             pass
-        return None, None
-
-    async def _get_reddit_fox(self):
-        """Fetch from r/foxes"""
-        subreddits = ["foxes", "Foxes", "IllegallySmolFoxes"]
-        subreddit = random.choice(subreddits)
-        api_url = f"https://www.reddit.com/r/{subreddit}/top.json?sort=top&t=week&limit=100"
-
-        try:
-            headers = {
-                "User-Agent": "/r/foxes_discord_bot"
-            }
-
-            async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                    if response.status != 200:
-                        return None, None
-
-                    data = await response.json()
-                    posts = data.get("data", {}).get("children", [])
-
-                    if not posts:
-                        return None, None
-
-                    random.shuffle(posts)
-
-                    for item in posts:
-                        try:
-                            post = item.get("data", {})
-                            url = post.get("url", "")
-
-                            if url.endswith((".jpg", ".jpeg", ".png", ".gif")):
-                                return url, "Reddit"
-
-                            if "i.redd.it" in url or "i.imgur.com" in url:
-                                return url, "Reddit"
-                        except Exception:
-                            continue
-
-        except Exception:
-            pass
-
-        return None, None
+        return None
