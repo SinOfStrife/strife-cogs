@@ -1,7 +1,7 @@
 {
     "author": ["Strife"],
-    "install_msg": "Thanks for installing Fox!",
-    "name": "Fox",
+    "install_msg": "Thanks for installing fox!",
+    "name": "fox",
     "short": "Sends a random fox.",
     "description": "Fetches a random fox image.",
     "tags": ["fun", "animals"],
