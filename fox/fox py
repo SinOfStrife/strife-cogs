@@ -39,4 +39,3 @@ class Fox(commands.Cog):
 
             except Exception as e:
                 await ctx.send("❌ An unexpected error occurred while fetching a fox.")
-                
