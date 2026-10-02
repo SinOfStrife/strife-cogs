@@ -5,7 +5,7 @@
     "short": "Sends a random fox.",
     "description": "Fetches a random fox image.",
     "tags": ["fun", "animals"],
-    "requirements": [],
+    "requirements": ["aiohttp"],
     "hidden": false,
     "type": "COG",
     "end_user_data_statement": "This cog does not persistently store any personal or user data."
