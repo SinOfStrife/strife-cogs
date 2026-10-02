@@ -1,0 +1,11 @@
+{
+    "author": ["sinofstrife"],
+    "install_msg": "Thanks for installing Fox! Run [p]fox to get a random cute fox.",
+    "name": "Fox",
+    "short": "Sends a random cute fox picture.",
+    "description": "Fetches a random fox image from the public RandomFox API.",
+    "tags": ["fun", "animals", "fox"],
+    "requirements": [],
+    "hidden": false,
+    "type": "COG"
+}
