@@ -1,5 +1,4 @@
-from .fox import fox
+from .fox import Fox
 
 async def setup(bot):
-    await bot.add_cog(fox(bot))
-  
+    await bot.add_cog(Fox(bot))
