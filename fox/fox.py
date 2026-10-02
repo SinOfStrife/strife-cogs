@@ -18,9 +18,14 @@ class Fox(commands.Cog):
 
         async with ctx.typing():
             try:
-                image_url = await self._get_randomfox()
+                sources = [self._get_randomfox, self._get_reddit_fox]
+                source_func = random.choice(sources)
+                image_url, source = await source_func()
+
                 if not image_url:
-                    image_url = await self._get_reddit_fox()
+                    # Try the other source if the first one fails
+                    other_source = [s for s in sources if s != source_func][0]
+                    image_url, source = await other_source()
 
                 if not image_url:
                     return await ctx.send("❌ Could not find a fox right now. Try again later!")
@@ -31,7 +36,7 @@ class Fox(commands.Cog):
                 )
                 embed.set_image(url=image_url)
                 embed.set_footer(
-                    text=f"Requested by {ctx.author.display_name}",
+                    text=f"Requested by {ctx.author.display_name} | Source: {source}",
                     icon_url=ctx.author.display_avatar.url
                 )
 
@@ -42,7 +47,7 @@ class Fox(commands.Cog):
             except Exception:
                 await ctx.send("❌ An unexpected error occurred while fetching a fox.")
 
-    async def _get_randomfox(self) -> str:
+    async def _get_randomfox(self):
         """Fetch from randomfox.ca"""
         api_url = "https://randomfox.ca/floof/"
         try:
@@ -50,45 +55,49 @@ class Fox(commands.Cog):
                 async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status == 200:
                         data = await response.json()
-                        return data.get("image")
+                        image_url = data.get("image")
+                        if image_url:
+                            return image_url, "randomfox.ca"
         except Exception:
-            return None
+            pass
+        return None, None
 
-    async def _get_reddit_fox(self) -> str:
-        """Fetch a fox post from r/foxes"""
-        api_url = "https://www.reddit.com/r/foxes/hot.json"
+    async def _get_reddit_fox(self):
+        """Fetch from r/foxes"""
+        subreddits = ["foxes", "Foxes", "IllegallySmolFoxes"]
+        subreddit = random.choice(subreddits)
+        api_url = f"https://www.reddit.com/r/{subreddit}/hot.json"
 
         try:
             headers = {
-                "User-Agent": "Python/3.8 (Red-DiscordBot; +https://github.com/Cog-Creators/Red-DiscordBot)"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
             }
+            params = {"limit": 25}
 
             async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                async with session.get(api_url, headers=headers, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status != 200:
-                        return None
+                        return None, None
 
                     data = await response.json()
                     posts = data.get("data", {}).get("children", [])
 
                     if not posts:
-                        return None
+                        return None, None
 
-                    # Shuffle to get random post from the list
                     random.shuffle(posts)
 
-                    for post in posts:
-                        url = post.get("data", {}).get("url", "")
+                    for item in posts:
+                        post = item.get("data", {})
+                        url = post.get("url", "")
 
-                        # Accept direct image URLs
-                        if url.endswith((".jpg", ".jpeg", ".png", ".gif")):
-                            return url
+                        if url.endswith((".jpg", ".jpeg", ".png", ".gif", ".gifv")):
+                            return url, "Reddit"
 
-                        # Accept imgur and reddit hosting
                         if "imgur.com" in url or "i.redd.it" in url:
-                            return url
+                            return url, "Reddit"
 
         except Exception:
-            return None
+            pass
 
-        return None
+        return None, None
