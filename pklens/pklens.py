@@ -72,23 +72,24 @@ class PKLens(commands.Cog):
     )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    async def pklens_help(self, interaction: discord.Interaction):
+    @app_commands.describe(public="Set to True to share the info message with the channel (default: False)")
+    async def pklens_help(self, interaction: discord.Interaction, public: bool = False):
         embed = discord.Embed(
-            title="🔍 PKLens - PluralKit Inspector",
-            description="A lightweight, privacy-focused tool to inspect public PluralKit system profiles and current fronters directly from Discord."
+            title="🔍 PKLens",
+            description="A lightweight, privacy-focused tool designed to make viewing public PluralKit system profiles and current fronters accessible across Discord."
         )
         embed.add_field(
             name="How to use",
-            value="Use the slash commands or right-click any user, go to **Apps**, and select **fronters** or **profile**.",
+            value="Use slash commands or right-click any user via their profile (`Apps` ➔ `fronters` or `profile`).",
             inline=False
         )
         embed.add_field(
             name="Privacy",
-            value="All responses are visible only to you (`ephemeral`). This respects PluralKit privacy settings.",
+            value="Lookups are ephemeral (only you see them) to respect PluralKit privacy settings. `/pklens` can be made public to introduce the app to others.",
             inline=False
         )
-        embed.set_footer(text="Built for the mythos-cogs collection.")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        embed.set_footer(text="Inspired by the Gayos of chaos")
+        await interaction.response.send_message(embed=embed, ephemeral=not public)
 
     @app_commands.command(
         name="pkfronters",
