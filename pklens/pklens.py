@@ -76,7 +76,8 @@ class PKLens(commands.Cog):
     async def pklens_help(self, interaction: discord.Interaction, public: bool = False):
         embed = discord.Embed(
             title="🔍 PKLens",
-            description="A lightweight, privacy-focused tool designed to make viewing public PluralKit system profiles and current fronters accessible across Discord."
+            description="A lightweight, privacy-focused tool designed to make viewing public PluralKit system profiles and current fronters accessible across Discord.",
+            color=discord.Color.from_str("#6b2598")
         )
         embed.add_field(
             name="How to use",
@@ -211,36 +212,4 @@ class PKLens(commands.Cog):
         data = await self.fetch_pk_data(f"/systems/{user.id}")
 
         if "error" in data:
-            await self._send_pk_error(interaction, user, data["error"], "system")
-            return
-
-        system_name = data.get("name") or user.name
-        tag = data.get("tag")
-        system_title = f"{system_name} [{tag}]" if tag else system_name
-
-        description = data.get("description") or "No description provided."
-        pronouns = data.get("pronouns") or "Not specified."
-
-        color_hex = data.get("color")
-        embed_color = discord.Color.default()
-        if color_hex:
-            try:
-                embed_color = discord.Color(int(color_hex, 16))
-            except ValueError:
-                pass
-
-        embed = discord.Embed(
-            title=system_title,
-            description=description,
-            color=embed_color
-        )
-        embed.add_field(name="Pronouns", value=pronouns, inline=True)
-
-        if data.get("avatar_url"):
-            embed.set_thumbnail(url=data["avatar_url"])
-
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-async def setup(bot):
-    await bot.add_cog(PKLens(bot))
+            await self._
