@@ -1,0 +1,10 @@
+{
+    "author": ["SinOfStrife"],
+    "install_msg": "Thanks for installing PKLens! Use the /pklens slash command for info, or right-click users to check PluralKit profiles and fronters.",
+    "name": "PKLens",
+    "short": "A privacy-focused PluralKit inspector for Discord context menus and slash commands.",
+    "description": "View public PluralKit system profiles and current fronters using user-installed context menus and commands.",
+    "tags": ["pluralkit", "utility", "privacy"],
+    "min_bot_version": "3.5.0",
+    "end_user_data_statement": "This cog does not persistently store any personal data or Discord user IDs."
+}
