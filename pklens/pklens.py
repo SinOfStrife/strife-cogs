@@ -7,10 +7,28 @@ class PKLens(commands.Cog):
     """A privacy-focused PluralKit inspector for Discord Context Menus and Slash Commands."""
 
     def __init__(self, bot):
+        super().__init__()
         self.bot = bot
         self.headers = {
             "User-Agent": "PKLens/1.0 (https://github.com/SinOfStrife)"
         }
+        
+        # Create context menus explicitly
+        self.check_fronters_menu = app_commands.ContextMenu(
+            name="PK: Check Fronters",
+            callback=self.check_fronter_callback
+        )
+        self.view_profile_menu = app_commands.ContextMenu(
+            name="PK: View Profile",
+            callback=self.view_profile_callback
+        )
+        
+        bot.tree.add_command(self.check_fronters_menu)
+        bot.tree.add_command(self.view_profile_menu)
+
+    async def cog_unload(self) -> None:
+        self.bot.tree.remove_command(self.check_fronters_menu.name, type=self.check_fronters_menu.type)
+        self.bot.tree.remove_command(self.view_profile_menu.name, type=self.view_profile_menu.type)
 
     async def fetch_pk_data(self, endpoint: str):
         """Fetches PluralKit data from the official API."""
@@ -147,91 +165,75 @@ class PKLens(commands.Cog):
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    async def check_fronter_callback(self, interaction: discord.Interaction, user: discord.User):
+        await interaction.response.defer(ephemeral=True)
+        data = await self.fetch_pk_data(f"/systems/{user.id}/fronters")
 
-async def _check_fronter_impl(cog, interaction: discord.Interaction, user: discord.User):
-    """Implementation for check fronters context menu."""
-    await interaction.response.defer(ephemeral=True)
-    data = await cog.fetch_pk_data(f"/systems/{user.id}/fronters")
+        if "error" in data:
+            await self._send_pk_error(interaction, user, data["error"], "fronters")
+            return
 
-    if "error" in data:
-        await cog._send_pk_error(interaction, user, data["error"], "fronters")
-        return
+        fronters = data.get("members", [])
+        if not fronters:
+            empty_embed = discord.Embed(
+                title=f"🟢 Current Fronters: {user.name}",
+                description="No system members are currently fronting.",
+                color=discord.Color.dark_grey()
+            )
+            await interaction.followup.send(embed=empty_embed, ephemeral=True)
+            return
 
-    fronters = data.get("members", [])
-    if not fronters:
-        empty_embed = discord.Embed(
+        names = [member.get("name") or "Unknown" for member in fronters if member.get("name")]
+        description = ", ".join(names) if names else "Unknown"
+
+        fronter_embed = discord.Embed(
             title=f"🟢 Current Fronters: {user.name}",
-            description="No system members are currently fronting.",
-            color=discord.Color.dark_grey()
+            description=description,
+            color=discord.Color.green()
         )
-        await interaction.followup.send(embed=empty_embed, ephemeral=True)
-        return
 
-    names = [member.get("name") or "Unknown" for member in fronters if member.get("name")]
-    description = ", ".join(names) if names else "Unknown"
+        first_member = fronters[0] if fronters else {}
+        avatar_url = first_member.get("avatar_url")
+        if avatar_url:
+            fronter_embed.set_thumbnail(url=avatar_url)
 
-    fronter_embed = discord.Embed(
-        title=f"🟢 Current Fronters: {user.name}",
-        description=description,
-        color=discord.Color.green()
-    )
+        await interaction.followup.send(embed=fronter_embed, ephemeral=True)
 
-    first_member = fronters[0] if fronters else {}
-    avatar_url = first_member.get("avatar_url")
-    if avatar_url:
-        fronter_embed.set_thumbnail(url=avatar_url)
+    async def view_profile_callback(self, interaction: discord.Interaction, user: discord.User):
+        await interaction.response.defer(ephemeral=True)
+        data = await self.fetch_pk_data(f"/systems/{user.id}")
 
-    await interaction.followup.send(embed=fronter_embed, ephemeral=True)
+        if "error" in data:
+            await self._send_pk_error(interaction, user, data["error"], "system")
+            return
 
+        system_name = data.get("name") or user.name
+        tag = data.get("tag")
+        system_title = f"{system_name} [{tag}]" if tag else system_name
 
-async def _view_profile_impl(cog, interaction: discord.Interaction, user: discord.User):
-    """Implementation for view profile context menu."""
-    await interaction.response.defer(ephemeral=True)
-    data = await cog.fetch_pk_data(f"/systems/{user.id}")
+        description = data.get("description") or "No description provided."
+        pronouns = data.get("pronouns") or "Not specified."
 
-    if "error" in data:
-        await cog._send_pk_error(interaction, user, data["error"], "system")
-        return
+        color_hex = data.get("color")
+        embed_color = discord.Color.default()
+        if color_hex:
+            try:
+                embed_color = discord.Color(int(color_hex, 16))
+            except ValueError:
+                pass
 
-    system_name = data.get("name") or user.name
-    tag = data.get("tag")
-    system_title = f"{system_name} [{tag}]" if tag else system_name
+        embed = discord.Embed(
+            title=system_title,
+            description=description,
+            color=embed_color
+        )
+        embed.add_field(name="Pronouns", value=pronouns, inline=True)
 
-    description = data.get("description") or "No description provided."
-    pronouns = data.get("pronouns") or "Not specified."
+        if data.get("avatar_url"):
+            embed.set_thumbnail(url=data["avatar_url"])
 
-    color_hex = data.get("color")
-    embed_color = discord.Color.default()
-    if color_hex:
-        try:
-            embed_color = discord.Color(int(color_hex, 16))
-        except ValueError:
-            pass
-
-    embed = discord.Embed(
-        title=system_title,
-        description=description,
-        color=embed_color
-    )
-    embed.add_field(name="Pronouns", value=pronouns, inline=True)
-
-    if data.get("avatar_url"):
-        embed.set_thumbnail(url=data["avatar_url"])
-
-    await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot):
-    cog = PKLens(bot)
-    await bot.add_cog(cog)
-
-    @app_commands.context_menu(name="PK: Check Fronters")
-    async def check_fronter(interaction: discord.Interaction, user: discord.User):
-        await _check_fronter_impl(cog, interaction, user)
-
-    @app_commands.context_menu(name="PK: View Profile")
-    async def view_profile(interaction: discord.Interaction, user: discord.User):
-        await _view_profile_impl(cog, interaction, user)
-
-    bot.tree.add_command(check_fronter)
-    bot.tree.add_command(view_profile)
+    await bot.add_cog(PKLens(bot))
