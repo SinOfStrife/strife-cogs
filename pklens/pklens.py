@@ -70,6 +70,8 @@ class PKLens(commands.Cog):
         name="pklens",
         description="View info about the PKLens app and how to use it."
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def pklens_help(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="🔍 PKLens - PluralKit Inspector",
@@ -77,7 +79,7 @@ class PKLens(commands.Cog):
         )
         embed.add_field(
             name="How to use",
-            value="Use the `/pklens` command or right-click any user, go to **Apps**, and select **fronters** or **profile**.",
+            value="Use the slash commands or right-click any user, go to **Apps**, and select **fronters** or **profile**.",
             inline=False
         )
         embed.add_field(
@@ -92,6 +94,8 @@ class PKLens(commands.Cog):
         name="pkfronters",
         description="Check who is currently fronting in a user's PluralKit system."
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def pkfronters_slash(self, interaction: discord.Interaction, user: discord.User):
         await interaction.response.defer(ephemeral=True)
         data = await self.fetch_pk_data(f"/systems/{user.id}/fronters")
@@ -130,6 +134,8 @@ class PKLens(commands.Cog):
         name="pkprofile",
         description="View a user's PluralKit system profile."
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def pkprofile_slash(self, interaction: discord.Interaction, user: discord.User):
         await interaction.response.defer(ephemeral=True)
         data = await self.fetch_pk_data(f"/systems/{user.id}")
