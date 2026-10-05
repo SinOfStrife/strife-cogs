@@ -13,14 +13,32 @@ class PKLens(commands.Cog):
             "User-Agent": "PKLens/1.0 (https://github.com/SinOfStrife)"
         }
 
-        # Create context menus explicitly with clean, standard-compliant names
+        # Create context menus explicitly with clean names, integrations, and DM/private channel contexts
         self.check_fronters_menu = app_commands.ContextMenu(
             name="fronters",
-            callback=self.check_fronter_callback
+            callback=self.check_fronter_callback,
+            integration_types={
+                discord.IntegrationType.guild_install,
+                discord.IntegrationType.user_install,
+            },
+            contexts={
+                discord.InteractionContextType.guild,
+                discord.InteractionContextType.bot_dm,
+                discord.InteractionContextType.private_channel,
+            }
         )
         self.view_profile_menu = app_commands.ContextMenu(
             name="profile",
-            callback=self.view_profile_callback
+            callback=self.view_profile_callback,
+            integration_types={
+                discord.IntegrationType.guild_install,
+                discord.IntegrationType.user_install,
+            },
+            contexts={
+                discord.InteractionContextType.guild,
+                discord.InteractionContextType.bot_dm,
+                discord.InteractionContextType.private_channel,
+            }
         )
 
         bot.tree.add_command(self.check_fronters_menu)
