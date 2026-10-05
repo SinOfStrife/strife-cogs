@@ -12,17 +12,17 @@ class PKLens(commands.Cog):
         self.headers = {
             "User-Agent": "PKLens/1.0 (https://github.com/SinOfStrife)"
         }
-        
-        # Create context menus explicitly
+
+        # Create context menus explicitly with clean, standard-compliant names
         self.check_fronters_menu = app_commands.ContextMenu(
-            name="PK: Check Fronters",
+            name="fronters",
             callback=self.check_fronter_callback
         )
         self.view_profile_menu = app_commands.ContextMenu(
-            name="PK: View Profile",
+            name="profile",
             callback=self.view_profile_callback
         )
-        
+
         bot.tree.add_command(self.check_fronters_menu)
         bot.tree.add_command(self.view_profile_menu)
 
@@ -77,7 +77,7 @@ class PKLens(commands.Cog):
         )
         embed.add_field(
             name="How to use",
-            value="Use the `/pklens` command or right-click any user, go to **Apps**, and select **PK: Check Fronters** or **PK: View Profile**.",
+            value="Use the `/pklens` command or right-click any user, go to **Apps**, and select **fronters** or **profile**.",
             inline=False
         )
         embed.add_field(
