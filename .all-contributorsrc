@@ -1,5 +1,12 @@
 {
   "projectName": "strife-cogs",
   "projectOwner": "SinOfStrife",
-  "contributors": []
+  "contributors": [
+    {
+      "login": "Xanderxx46",
+      "name": "Xanderxx46",
+      "profile": "https://github.com/Xanderxx46",
+      "contributions": ["code"]
+    }
+  ]
 }
