@@ -7,5 +7,6 @@
   "min_bot_version": "3.5.0",
   "hidden": false,
   "disabled": false,
-  "type": "COG"
+  "type": "COG",
+  "end_user_data_statement": "This cog stores Discord user IDs for members on a server's no-ping list."
 }
