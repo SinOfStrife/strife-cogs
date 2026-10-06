@@ -1,0 +1,18 @@
+{
+    "name": "advancedinviteV2",
+    "short": "Modern Discord Components V2 Invite Cog",
+    "description": "Sends an invite message utilizing Discord's native Components V2 layout containers, text displays, and dynamic statistics.",
+    "end_user_data_statement": "This cog does not store end user data.",
+    "install_msg": "Thanks for installing AdvancedInvite V2 (Components V2 Edition)! Run `[p]invite set` to configure settings.",
+    "author": [
+        "Jojo#7791",
+        "sinofstrife"
+    ],
+    "required_cogs": {},
+    "requirements": [],
+    "tags": ["Utility"],
+    "min_bot_version": "3.5.0.dev0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG"
+}
