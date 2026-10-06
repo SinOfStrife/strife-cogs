@@ -37,6 +37,8 @@ If you encounter any bugs, have feature requests, or need help with any of these
 <!-- prettier-ignore-end -->
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
+[![All Contributors](https://img.shields.io/github/all-contributors/SinOfStrife/strife-cogs?color=ee8449&style=flat-square)](#contributors)
+
   
 ## License
 
