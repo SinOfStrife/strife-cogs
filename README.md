@@ -29,8 +29,14 @@ If you encounter any bugs, have feature requests, or need help with any of these
 
 ## Contributors
 
-* **[Xanderxx46](https://github.com/Xanderxx46)** 
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
 
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
   
 ## License
 
