@@ -32,10 +32,14 @@ If you encounter any bugs, have feature requests, or need help with any of these
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
 <!-- markdownlint-disable -->
+<table>
+  <tr>
+    <td align="center" valign="top" width="14.28%"><a href="https://github.com/Xanderxx46"><img src="https://github.com/Xanderxx46.png?size=100" width="100px;" alt="Xanderxx46"/><br /><sub><b>Xanderxx46</b></sub></a><br /><a href="https://github.com/SinOfStrife/strife-cogs/commits?author=Xanderxx46" title="Code">💻</a></td>
+  </tr>
+</table>
 
 <!-- markdownlint-restore -->
 <!-- prettier-ignore-end -->
-
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 [![All Contributors](https://img.shields.io/github/all-contributors/SinOfStrife/strife-cogs?color=ee8449&style=flat-square)](#contributors)
 
