@@ -8,5 +8,7 @@
   "hidden": false,
   "disabled": false,
   "type": "COG",
-  "end_user_data_statement": "This cog stores Discord user IDs for members on a server's no-ping list."
+  "permissions": ["add_reactions", "read_message_history"],
+  "install_msg": "Thanks for installing NoPings! Use `[p]nopings toggle` to silence bot reply pings server-wide, or `[p]nopings add @user` to add specific members.",
+  "end_user_data_statement": "This cog stores Discord User IDs on a per-guild basis to maintain a no-ping reply list."
 }
