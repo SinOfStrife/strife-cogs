@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Jojo#7791, sinofstrife and Contributors
+# Copyright (c) 2021-2026 Jojo#7791, sinofstrife and Contributors
 # Licensed under the MIT License
 
 import logging
@@ -44,10 +44,15 @@ class AdvancedInviteV2(commands.Cog):
     def __init__(self, bot: Red) -> None:
         self.bot = bot
         self._invite_command: Optional[commands.Command] = self.bot.remove_command("invite")
-        self.config = Config.get_conf(self, 544974305445019651, force_registration=True)
+        # Your unique cog storage ID
+        self.config = Config.get_conf(self, 957289026195435520, force_registration=True)
         self.config.register_global(**_config_structure)
 
-    async def cog_unload(self) -> None:
+    async def red_delete_data_for_user(self, *, requester: Any, user_id: int) -> None:
+        """Required by Red QA: This cog does not store any personal user data."""
+        return
+
+    def cog_unload(self) -> None:
         self.bot.remove_command("invite")
         if self._invite_command:
             self.bot.add_command(self._invite_command)
@@ -215,7 +220,7 @@ class AdvancedInviteV2(commands.Cog):
         }
 
     # ==========================================
-    # PUBLIC SLASH COMMAND (The only slash command)
+    # PUBLIC SLASH COMMAND
     # ==========================================
     @app_commands.command(name="invite", description="Get the official invite link for the bot.")
     async def slash_invite(self, interaction: discord.Interaction) -> None:
@@ -256,7 +261,8 @@ class AdvancedInviteV2(commands.Cog):
                     interaction_token=interaction.token,
                 )
                 fallback_payload = dict(payload)
-                fallback_payload["flags"] = 32768
+                # 64 (ephemeral/secret) + 32768 (components v2) = 32832
+                fallback_payload["flags"] = 32832
                 await self.bot.http.request(route, json=fallback_payload)
             except Exception as patch_err:
                 log.exception("Failed to update original interaction with Components V2 for %s", interaction.user.id)
