@@ -240,6 +240,25 @@ class AdvancedInviteV2(commands.Cog):
         me = interaction.guild.me if interaction.guild else self.bot.user
         payload = await self._build_invite_payload(me)
 
+        # If used directly in bot DMs, show the card immediately
+        if interaction.guild is None:
+            try:
+                app_id = interaction.application_id or self.bot.application_id
+                route = Route(
+                    "PATCH",
+                    "/webhooks/{application_id}/{interaction_token}/messages/@original",
+                    application_id=app_id,
+                    interaction_token=interaction.token,
+                )
+                dm_payload = dict(payload)
+                dm_payload["flags"] = 32832
+                await self.bot.http.request(route, json=dm_payload)
+            except Exception as error:
+                log.exception("Unexpected error in slash DM invite for %s", interaction.user.id)
+                await interaction.followup.send(f"An error occurred: `{error}`", ephemeral=True)
+            return
+
+        # If used in a server channel, send to DMs
         try:
             dm_channel = interaction.user.dm_channel or await interaction.user.create_dm()
             await self._send_raw_v2_payload(dm_channel.id, payload)
@@ -261,7 +280,6 @@ class AdvancedInviteV2(commands.Cog):
                     interaction_token=interaction.token,
                 )
                 fallback_payload = dict(payload)
-                # 64 (ephemeral/secret) + 32768 (components v2) = 32832
                 fallback_payload["flags"] = 32832
                 await self.bot.http.request(route, json=fallback_payload)
             except Exception as patch_err:
@@ -288,6 +306,16 @@ class AdvancedInviteV2(commands.Cog):
         me = ctx.me or self.bot.user
         payload = await self._build_invite_payload(me)
 
+        # If already in the bot's DMs, send the card directly and do NOT send a follow-up ping!
+        if ctx.guild is None:
+            try:
+                await self._send_raw_v2_payload(ctx.channel.id, payload)
+            except Exception as error:
+                log.exception("Unexpected error in DM invite command for user %s", ctx.author.id)
+                await ctx.send(f"Failed to send invite: `{error}`")
+            return
+
+        # If in a server channel, send to DMs and notify the user
         try:
             dm_channel = ctx.author.dm_channel or await ctx.author.create_dm()
             await self._send_raw_v2_payload(dm_channel.id, payload)
