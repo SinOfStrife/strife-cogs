@@ -494,4 +494,37 @@ class AdvancedInviteV2(commands.Cog):
                 await self.config.thumbnail.set(None)
                 await ctx.send("The thumbnail has been removed.")
             elif thumbnail == "bot":
-                await self.config.thumbnail.set("
+                await self.config.thumbnail.set("bot")
+                await ctx.send("The thumbnail has been configured to display the bot's profile avatar.")
+            else:
+                await self.config.thumbnail.set(thumbnail)
+                await ctx.send(f"The thumbnail has been set to: <{thumbnail}>")
+        except Exception as error:
+            log.exception("Failed to update thumbnail setting.")
+            await ctx.send(f"Failed to update thumbnail: `{error}`")
+
+    @invite_settings.command(name="showsettings")
+    async def invite_show_settings(self, ctx: commands.Context) -> None:
+        """Display an overview of all active settings."""
+        try:
+            settings = await self.config.all()
+            color_val = settings.get("accent_color", 5793266)
+            hex_color = f"#{color_val:06X}" if color_val is not None else "None"
+            thumb_display = "Bot Avatar" if settings.get("thumbnail") == "bot" else (settings.get("thumbnail") or "None")
+            custom_invite = settings.get("custom_invite")
+            invite_display = f"<{custom_invite}> (Custom)" if custom_invite else "Default Bot Invite URL (Dynamic)"
+
+            lines = [
+                f"• **Title:** {settings.get('title')}",
+                f"• **Custom Message:** {settings.get('custom_message')}",
+                f"• **Invite URL:** {invite_display}",
+                f"• **Support Server:** {settings.get('support_server') or 'None (Button Hidden)'}",
+                f"• **Footer:** {settings.get('footer') or 'None'}",
+                f"• **Accent Color:** {hex_color} (`{color_val}`)",
+                f"• **Thumbnail:** {thumb_display}",
+            ]
+            msg = "**Advanced Invite V2 Settings Overview**\n\n" + "\n".join(lines)
+            await ctx.send(msg)
+        except Exception as error:
+            log.exception("Failed to display settings.")
+            await ctx.send(f"Failed to display settings: `{error}`")
