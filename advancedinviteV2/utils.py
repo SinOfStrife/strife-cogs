@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Jojo#7791, sinofstrife and Contributors
+# Copyright (c) 2021-2026 Jojo#7791, sinofstrife and Contributors
 # Licensed under the MIT License
 
 import logging
@@ -30,6 +30,11 @@ class InviteNoneConverter(commands.Converter):
     ) -> Union[discord.Invite, str, None]:
         if argument.lower() in ("none", "nil", "null", "reset"):
             return None
+
+        # If it's a bot OAuth authorization link, return it directly without pinging Discord
+        if "oauth2" in argument.lower() or "authorize" in argument.lower():
+            return argument
+
         try:
             invite = await discord.Invite.from_url(ctx.bot, argument)
             return invite
@@ -71,4 +76,4 @@ class ThumbnailConverter(commands.Converter):
             "• Use `bot` to use the bot's profile avatar.\n"
             "• Provide a direct link starting with `http://` or `https://`.\n"
             "• Use `none` to remove the thumbnail entirely."
-      )
+        )
