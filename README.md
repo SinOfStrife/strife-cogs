@@ -14,14 +14,15 @@ Once the repository is added, you can install individual cogs using:
 ```ini
 [p]cog install strife-cogs <cog_name>
 ```
+
 ## Available Cogs
 
 | Cog | Description | Key Commands |
 | :--- | :--- | :--- |
+| **advancedinviteV2** | Sends interactive invite cards using Discord's modern Components V2 layouts, custom buttons, and live server stats. | `[p]invite`<br>`[p]invite set`<br>`/invite` |
 | **Fox** | Fetches and posts random fox images or GIFs in Discord as clean embeds. | `[p]fox` |
 | **NoPings** | Prevents bot reply messages from pinging users. Can be toggled server-wide or scoped to specific users. | `[p]nopings toggle`<br>`[p]nopings add @user`<br>`[p]nopings remove @user`<br>`[p]nopings test [user]` |
 | **PKLens** | A privacy-focused PluralKit accessibility tool supporting ephemeral profile and fronter lookups across slash commands, DMs, and right-click context menus. | `[p]pklens`<br>`[p]pkfronters`<br>`[p]pkprofile`<br>*(Context Menus: `fronters`, `profile`)* |
-
 
 ## Support
 
@@ -43,8 +44,10 @@ If you encounter any bugs, have feature requests, or need help with any of these
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 [![All Contributors](https://img.shields.io/github/all-contributors/SinOfStrife/strife-cogs?color=ee8449&style=flat-square)](#contributors)
 
-  
+## Acknowledgments
+
+* **advancedinviteV2** is adapted from the original `advancedinvite` cog by [Jojo#7791](https://github.com/Just-Jojo/JojoCogs).
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-
