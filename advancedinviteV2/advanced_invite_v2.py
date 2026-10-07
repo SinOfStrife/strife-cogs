@@ -31,6 +31,7 @@ _config_structure: Final[Dict[str, Any]] = {
     "footer": None,
     "accent_color": 5793266,
     "thumbnail": None,
+    "custom_invite": None,
 }
 
 
@@ -38,7 +39,7 @@ class AdvancedInviteV2(commands.Cog):
     """An advanced invite cog built using Discord Components V2 layout structures."""
 
     __authors__: Final[List[str]] = ["Jojo#7791", "sinofstrife"]
-    __version__: Final[str] = "4.4.1"
+    __version__: Final[str] = "4.5.0"
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
@@ -119,7 +120,14 @@ class AdvancedInviteV2(commands.Cog):
             settings.get("footer"), bot_name, guild_count_str, user_count_str
         )
 
-        url = await self.bot.get_invite_url()
+        custom_invite = settings.get("custom_invite")
+        if custom_invite:
+            url = self._replace_placeholders(
+                custom_invite, bot_name, guild_count_str, user_count_str
+            )
+        else:
+            url = await self.bot.get_invite_url()
+
         support = settings.get("support_server")
         accent_color = settings.get("accent_color", 5793266)
         thumbnail = settings.get("thumbnail")
@@ -233,7 +241,12 @@ class AdvancedInviteV2(commands.Cog):
             await interaction.followup.send("📬 I've sent you a DM with the invite!", ephemeral=True)
 
         except (discord.Forbidden, discord.HTTPException) as error:
-            log.warning("DM failed for slash user %s (%s): %s. Updating original interaction.", interaction.user, interaction.user.id, error)
+            log.warning(
+                "DM failed for slash user %s (%s): %s. Updating original interaction.",
+                interaction.user,
+                interaction.user.id,
+                error,
+            )
             try:
                 app_id = interaction.application_id or self.bot.application_id
                 route = Route(
@@ -313,6 +326,41 @@ class AdvancedInviteV2(commands.Cog):
         Run `[p]invite set showsettings` to view all current values.
         """
         await ctx.send_help()
+
+    @invite_settings.command(name="url", aliases=("boturl", "botinvite", "customurl", "custominvite", "link"))
+    async def invite_url(
+        self, ctx: commands.Context, *, invite: Union[InviteNoneConverter, NoneConverter]
+    ) -> None:
+        """Set a custom bot invite URL for the main invite button.
+
+        If set to `none` or `default`, it falls back to the bot's default generated invite URL.
+
+        **Usage:**
+        • `[p]invite set url https://discord.com/oauth2/authorize?client_id=123...`
+        • `[p]invite set url none` (resets back to the bot's default invite)
+        • `[p]invite set url default`
+        """
+        try:
+            invite_url = getattr(invite, "url", invite)
+            if invite_url and isinstance(invite_url, str) and invite_url.lower() in ("default", "none", "reset"):
+                invite_url = None
+
+            if not invite_url:
+                await self.config.custom_invite.set(None)
+                default_url = await self.bot.get_invite_url()
+                await ctx.send(
+                    f"The main invite button has been reset to the bot's default generated invite URL:\n<{default_url}>"
+                )
+                return
+
+            if isinstance(invite_url, str) and not (invite_url.startswith("http://") or invite_url.startswith("https://")):
+                invite_url = f"https://{invite_url}"
+
+            await self.config.custom_invite.set(str(invite_url))
+            await ctx.send(f"The main invite button URL has been set to: <{invite_url}>.")
+        except Exception as error:
+            log.exception("Failed to update custom invite URL setting.")
+            await ctx.send(f"Failed to update custom invite URL: `{error}`")
 
     @invite_settings.command(name="support")
     async def invite_support(self, ctx: commands.Context, invite: InviteNoneConverter) -> None:
@@ -446,34 +494,4 @@ class AdvancedInviteV2(commands.Cog):
                 await self.config.thumbnail.set(None)
                 await ctx.send("The thumbnail has been removed.")
             elif thumbnail == "bot":
-                await self.config.thumbnail.set("bot")
-                await ctx.send("The thumbnail has been configured to display the bot's profile avatar.")
-            else:
-                await self.config.thumbnail.set(thumbnail)
-                await ctx.send(f"The thumbnail has been set to: <{thumbnail}>")
-        except Exception as error:
-            log.exception("Failed to update thumbnail setting.")
-            await ctx.send(f"Failed to update thumbnail: `{error}`")
-
-    @invite_settings.command(name="showsettings")
-    async def invite_show_settings(self, ctx: commands.Context) -> None:
-        """Display an overview of all active settings."""
-        try:
-            settings = await self.config.all()
-            color_val = settings.get("accent_color", 5793266)
-            hex_color = f"#{color_val:06X}" if color_val is not None else "None"
-            thumb_display = "Bot Avatar" if settings.get("thumbnail") == "bot" else (settings.get("thumbnail") or "None")
-
-            lines = [
-                f"• **Title:** {settings.get('title')}",
-                f"• **Custom Message:** {settings.get('custom_message')}",
-                f"• **Support Server:** {settings.get('support_server') or 'None (Button Hidden)'}",
-                f"• **Footer:** {settings.get('footer') or 'None'}",
-                f"• **Accent Color:** {hex_color} (`{color_val}`)",
-                f"• **Thumbnail:** {thumb_display}",
-            ]
-            msg = "**Advanced Invite V2 Settings Overview**\n\n" + "\n".join(lines)
-            await ctx.send(msg)
-        except Exception as error:
-            log.exception("Failed to display settings.")
-            await ctx.send(f"Failed to display settings: `{error}`")
+                await self.config.thumbnail.set("
