@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Jojo#7791, sinofstrife and Contributors
+# Copyright (c) 2021-2026 Jojo#7791, sinofstrife and Contributors
 # Licensed under the MIT License
 
 import json
