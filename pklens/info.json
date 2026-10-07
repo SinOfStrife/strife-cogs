@@ -1,6 +1,6 @@
 {
     "author": ["SinOfStrife"],
-    "install_msg": "Thanks for installing PKLens! Use the /pklens slash command for info, or right-click users to check PluralKit profiles and fronters.",
+    "install_msg": "Thanks for installing PKLens! Use the /pklens slash command for info, or right-click users to check PluralKit profiles and fronters. Note: This cog interacts with an external web service (api.pluralkit.me).",
     "name": "PKLens",
     "short": "A privacy-focused PluralKit inspector for Discord context menus and slash commands.",
     "description": "View public PluralKit system profiles and current fronters using user-installed context menus and commands.",
