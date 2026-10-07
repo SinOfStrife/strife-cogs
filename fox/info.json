@@ -1,6 +1,6 @@
 {
     "author": ["Strife"],
-    "install_msg": "Thanks for installing the Fox cog! Use [p]fox to fetch a random fox. Note: This cog interacts with an external web service (randomfox.ca).",
+    "install_msg": "Thanks for installing the Fox cog! Use `[p]fox` to fetch a random fox. Note: This cog interacts with an external web service (randomfox.ca).",
     "name": "fox",
     "short": "Sends a random fox.",
     "description": "Fetches a random fox image from an external API.",
