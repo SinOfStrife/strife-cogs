@@ -1,9 +1,10 @@
 import logging
-from typing import Optional
+from typing import Dict, Optional, Set
 
 import discord
 from discord.abc import Messageable
 from redbot.core import Config, commands
+from redbot.core.bot import Red
 
 log = logging.getLogger("red.nopings")
 
@@ -11,35 +12,72 @@ log = logging.getLogger("red.nopings")
 class NoPings(commands.Cog):
     """Suppresses bot reply pings globally or for designated users."""
 
-    def __init__(self, bot):
-        self.bot = bot
-        self.config = Config.get_conf(self, identifier=8473920194, force_registration=True)
+    def __init__(self, bot: Red) -> None:
+        self.bot: Red = bot
+        self.config: Config = Config.get_conf(
+            self,
+            identifier=8473920194,
+            force_registration=True,
+        )
         self.config.register_guild(enabled=False, blocked_users=[])
+
+        # In-memory fast cache to prevent disk I/O on every bot send call
+        self._cache: Dict[int, Dict[str, any]] = {}
+        self._is_active: bool = False
         self._original_send = None
         self._patched_send = None
 
+    async def red_delete_data_for_user(self, *, requester: str, user_id: int) -> None:
+        """Comply with Red QA End User Data deletion requests."""
+        all_guilds = await self.config.all_guilds()
+        for guild_id, data in all_guilds.items():
+            blocked = data.get("blocked_users", [])
+            if user_id in blocked:
+                blocked.remove(user_id)
+                await self.config.guild_from_id(guild_id).blocked_users.set(blocked)
+                if guild_id in self._cache:
+                    self._cache[guild_id]["blocked"].discard(user_id)
+
+    async def _build_cache(self) -> None:
+        """Populate the in-memory cache for all guilds on cog load."""
+        all_guilds = await self.config.all_guilds()
+        for guild_id, data in all_guilds.items():
+            self._cache[guild_id] = {
+                "enabled": data.get("enabled", False),
+                "blocked": set(data.get("blocked_users", [])),
+            }
+
     async def cog_load(self) -> None:
+        await self._build_cache()
+        self._is_active = True
+
         if self._patched_send is not None:
             return
+
         original = Messageable.send
         cog = self
 
         async def send(messageable, content=None, **kwargs):
-            try:
-                kwargs = await cog._suppress_reply_ping(messageable, kwargs)
-            except Exception:
-                log.exception("Failed to apply no-ping settings. Sending the message unchanged.")
+            if cog._is_active:
+                try:
+                    kwargs = await cog._suppress_reply_ping(messageable, kwargs)
+                except Exception:
+                    log.exception("Failed to evaluate no-ping settings. Sending message unaltered.")
             return await original(messageable, content, **kwargs)
 
         self._original_send = original
         self._patched_send = send
         Messageable.send = send
 
-    async def cog_unload(self) -> None:
-        if self._patched_send is not None and Messageable.send is self._patched_send:
+    def cog_unload(self) -> None:
+        # Deactivate first to turn wrapper into an instant pass-through
+        self._is_active = False
+
+        # Cooperative unwrap: only detach if another cog didn't wrap over us
+        if Messageable.send is self._patched_send:
             Messageable.send = self._original_send
-        self._patched_send = None
-        self._original_send = None
+            self._original_send = None
+            self._patched_send = None
 
     async def _suppress_reply_ping(self, messageable, kwargs: dict) -> dict:
         reference = kwargs.get("reference")
@@ -53,8 +91,13 @@ class NoPings(commands.Cog):
         if guild is None:
             return kwargs
 
-        enabled = await self.config.guild(guild).enabled()
-        blocked_users = await self.config.guild(guild).blocked_users()
+        guild_data = self._cache.get(guild.id)
+        if not guild_data:
+            return kwargs
+
+        enabled: bool = guild_data.get("enabled", False)
+        blocked_users: Set[int] = guild_data.get("blocked", set())
+
         if not enabled:
             if not blocked_users:
                 return kwargs
@@ -63,13 +106,31 @@ class NoPings(commands.Cog):
                 return kwargs
 
         kwargs["mention_author"] = False
+
+        # If an explicit AllowedMentions object was passed, disable replied_user on it as well
+        allowed_mentions = kwargs.get("allowed_mentions")
+        if isinstance(allowed_mentions, discord.AllowedMentions):
+            kwargs["allowed_mentions"] = discord.AllowedMentions(
+                everyone=allowed_mentions.everyone,
+                roles=allowed_mentions.roles,
+                users=allowed_mentions.users,
+                replied_user=False,
+            )
+
         return kwargs
 
     async def _reference_author_id(self, reference) -> Optional[int]:
+        # 1. Direct message object
         author = getattr(reference, "author", None)
         if author is not None:
-            return author.id
+            return getattr(author, "id", None)
 
+        # 2. Resolved message on a MessageReference (fast local lookup)
+        resolved = getattr(reference, "resolved", None)
+        if isinstance(resolved, discord.Message) and resolved.author is not None:
+            return resolved.author.id
+
+        # 3. Cached message reference
         cached = getattr(reference, "cached_message", None)
         if cached is not None and getattr(cached, "author", None) is not None:
             return cached.author.id
@@ -85,15 +146,17 @@ class NoPings(commands.Cog):
             channel_id = getattr(reference, "channel_id", None)
             if channel_id is not None:
                 channel = self.bot.get_channel(channel_id)
+
         if channel is None or message_id is None or not hasattr(channel, "fetch_message"):
             return None
 
+        # 4. Fallback HTTP fetch
         try:
             message = await channel.fetch_message(message_id)
-        except discord.HTTPException:
-            log.debug("Could not fetch referenced message %s to check the no-ping list.", message_id)
+            return message.author.id
+        except (discord.HTTPException, discord.NotFound, discord.Forbidden):
+            log.debug("Could not fetch referenced message %s for ping suppression.", message_id)
             return None
-        return message.author.id
 
     @commands.group(name="nopings", invoke_without_command=True)
     @commands.guild_only()
@@ -109,14 +172,16 @@ class NoPings(commands.Cog):
         new_state = not current
         await self.config.guild(ctx.guild).enabled.set(new_state)
 
-        emoji = "✅" if new_state else "❌"
+        # Update cache
+        self._cache.setdefault(ctx.guild.id, {"enabled": False, "blocked": set()})["enabled"] = new_state
+
         try:
-            await ctx.message.add_reaction(emoji)
+            await ctx.message.add_reaction("✅" if new_state else "❌")
         except discord.HTTPException:
             pass
 
         if new_state:
-            text = "✅ Got it! Bot reply pings are turned off for the whole server now."
+            text = "✅ Bot reply pings are now turned off for the entire server."
         else:
             text = "❌ Bot reply pings are back on for the server."
 
@@ -125,7 +190,7 @@ class NoPings(commands.Cog):
     @nopings.command(name="add")
     @commands.admin_or_permissions(manage_guild=True)
     async def add_user(self, ctx: commands.Context, user: discord.Member):
-        """Add a specific user so the bot won't ping when replying to them."""
+        """Add a specific user so the bot will not ping when replying to them."""
         async with self.config.guild(ctx.guild).blocked_users() as blocked:
             if user.id in blocked:
                 await ctx.send(
@@ -135,13 +200,16 @@ class NoPings(commands.Cog):
                 return
             blocked.append(user.id)
 
+        # Update cache
+        self._cache.setdefault(ctx.guild.id, {"enabled": False, "blocked": set()})["blocked"].add(user.id)
+
         try:
             await ctx.message.add_reaction("✅")
         except discord.HTTPException:
             pass
 
         await ctx.send(
-            f"✅ Added **{user.display_name}** to the list—I won't ping them when replying anymore.",
+            f"✅ Added **{user.display_name}** to the no-ping list.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
@@ -152,11 +220,15 @@ class NoPings(commands.Cog):
         async with self.config.guild(ctx.guild).blocked_users() as blocked:
             if user.id not in blocked:
                 await ctx.send(
-                    f"❌ **{user.display_name}** wasn't on the no-ping list anyway.",
+                    f"❌ **{user.display_name}** was not on the no-ping list.",
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
                 return
             blocked.remove(user.id)
+
+        # Update cache
+        if ctx.guild.id in self._cache:
+            self._cache[ctx.guild.id]["blocked"].discard(user.id)
 
         try:
             await ctx.message.add_reaction("❌")
@@ -164,29 +236,30 @@ class NoPings(commands.Cog):
             pass
 
         await ctx.send(
-            f"❌ Removed **{user.display_name}** from the list. Normal bot reply pings will work for them again.",
+            f"❌ Removed **{user.display_name}** from the no-ping list.",
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
     @nopings.command(name="test")
-    async def test_ping(self, ctx: commands.Context, target: discord.Member = None):
+    async def test_ping(self, ctx: commands.Context, target: Optional[discord.Member] = None):
         """Test bot reply ping status for yourself or another user."""
         target_user = target or ctx.author
-        enabled = await self.config.guild(ctx.guild).enabled()
-        blocked_users = await self.config.guild(ctx.guild).blocked_users()
-        is_user_blocked = target_user.id in blocked_users
+        guild_data = self._cache.get(ctx.guild.id, {"enabled": False, "blocked": set()})
+
+        enabled = guild_data["enabled"]
+        is_user_blocked = target_user.id in guild_data["blocked"]
 
         if enabled:
             emoji = "✅"
             msg = (
                 f"✅ Bot reply pings are **disabled** server-wide. "
-                f"Bot replies to **{target_user.display_name}** will **not** ping them."
+                f"Bot replies to **{target_user.display_name}** will **not** ping."
             )
         elif is_user_blocked:
             emoji = "✅"
             msg = (
                 f"✅ **{target_user.display_name}** is on the no-ping list. "
-                "Bot replies to them will **not** ping them."
+                "Bot replies to them will **not** ping."
             )
         else:
             emoji = "❌"
@@ -201,9 +274,10 @@ class NoPings(commands.Cog):
             pass
 
         should_suppress = enabled or is_user_blocked
-        if should_suppress:
-            allowed = discord.AllowedMentions.none()
-        else:
-            allowed = discord.AllowedMentions(users=True, replied_user=True)
+        allowed = (
+            discord.AllowedMentions.none()
+            if should_suppress
+            else discord.AllowedMentions(users=True, replied_user=True)
+        )
 
         await ctx.reply(msg, allowed_mentions=allowed)
