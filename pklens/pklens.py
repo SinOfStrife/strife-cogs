@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import asyncio
-from typing import Any, Optional
+import time
+from typing import Any, Literal, Optional
 
 import aiohttp
 import discord
 from redbot.core import app_commands, commands
+from redbot.core.bot import Red
 
 PK_API = "https://api.pluralkit.me/v2"
 _TITLE_LIMIT = 256
@@ -19,7 +23,7 @@ def _clip(text: str, limit: int) -> str:
     return text[: limit - 1] + "…"
 
 
-def _member_label(member: dict) -> str:
+def _member_label(member: dict[str, Any]) -> str:
     return member.get("display_name") or member.get("name") or "Unknown"
 
 
@@ -38,15 +42,44 @@ def _embed_color(color_hex: Optional[str]) -> discord.Color:
         return discord.Color.default()
 
 
+def _is_valid_url(url: Any) -> bool:
+    """Verifies avatar URLs to prevent Discord 400 Bad Request crashes."""
+    return isinstance(url, str) and (url.startswith("http://") or url.startswith("https://"))
+
+
+def _retry_seconds(value: Any) -> Optional[str]:
+    """Helper to safely parse Retry-After headers from rate limits."""
+    try:
+        seconds = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    if seconds < 0 or seconds > 3600:
+        return None
+    return str(seconds)
+
+
 class PKLens(commands.Cog):
     """A privacy-focused PluralKit inspector for Discord Context Menus and Slash Commands."""
 
-    def __init__(self, bot):
+    __version__ = "1.0.1"
+    __author__ = "SinOfStrife"
+    # Matches info.json word-for-word for Red QA compliance
+    __red_end_user_data_statement__ = (
+        "This cog does not store data. Looking up a user sends their "
+        "Discord user ID to the PluralKit API at api.pluralkit.me."
+    )
+
+    def __init__(self, bot: Red) -> None:
         super().__init__()
         self.bot = bot
         self.session: Optional[aiohttp.ClientSession] = None
-        self.headers = {"User-Agent": "PKLens/1.0 (https://github.com/SinOfStrife/strife-cogs)"}
+        self.headers = {"User-Agent": "PKLens/1.0.1 (https://github.com/SinOfStrife/strife-cogs)"}
 
+        # In-Memory Cache: dict[endpoint, (timestamp, payload)]
+        self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._cache_ttl = 60.0  # 60-second cache window
+
+        # User Profile Context Menus (User Apps)
         self.check_fronters_menu = app_commands.ContextMenu(
             name="fronters",
             callback=self.check_fronter_callback,
@@ -85,8 +118,29 @@ class PKLens(commands.Cog):
             if self.bot.tree.get_command(menu.name, type=menu.type) is not None:
                 self.bot.tree.remove_command(menu.name, type=menu.type)
 
-    async def fetch_pk_data(self, endpoint: str) -> dict:
-        """Fetch PluralKit data. Network failures become an error payload instead of a traceback."""
+    # --- Red QA Data Privacy Handlers ---
+
+    async def red_get_data_for_user(self, *, user_id: int) -> dict[str, Any]:
+        return {}
+
+    async def red_delete_data_for_user(
+        self,
+        *,
+        requester: Literal["discord_deleted_user", "owner", "user", "user_strict"],
+        user_id: int,
+    ) -> None:
+        return
+
+    # --- API Helper with 60-Second Cache ---
+
+    async def fetch_pk_data(self, endpoint: str) -> dict[str, Any]:
+        """Fetch PluralKit data. Checks cache first to avoid rate limits."""
+        now = time.monotonic()
+        if endpoint in self._cache:
+            timestamp, cached_data = self._cache[endpoint]
+            if now - timestamp < self._cache_ttl:
+                return cached_data
+
         if self.session is None or self.session.closed:
             return {"error": "api_error"}
 
@@ -106,9 +160,17 @@ class PKLens(commands.Cog):
 
         if not isinstance(payload, dict):
             return {"error": "api_error"}
+
+        self._cache[endpoint] = (now, payload)
         return payload
 
-    async def _send_pk_error(self, interaction: discord.Interaction, user: discord.User, data: dict, kind: str):
+    async def _send_pk_error(
+        self,
+        interaction: discord.Interaction,
+        user: discord.User | discord.Member,
+        data: dict[str, Any],
+        kind: str,
+    ) -> None:
         """Send a consistent user-only error message for the selected PK check."""
         error = _error_code(data) or "api_error"
         if error == "not_found":
@@ -130,7 +192,7 @@ class PKLens(commands.Cog):
         embed = discord.Embed(title="⚠️ Error", description=msg, color=discord.Color.red())
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    async def _reply_fronters(self, interaction: discord.Interaction, user: discord.User) -> None:
+    async def _reply_fronters(self, interaction: discord.Interaction, user: discord.User | discord.Member) -> None:
         data = await self.fetch_pk_data(f"/systems/{user.id}/fronters")
         if _error_code(data):
             await self._send_pk_error(interaction, user, data, "fronters")
@@ -158,12 +220,15 @@ class PKLens(commands.Cog):
             color=discord.Color.green(),
         )
         for member in fronters:
-            if isinstance(member, dict) and member.get("avatar_url"):
-                embed.set_thumbnail(url=member["avatar_url"])
-                break
+            if isinstance(member, dict):
+                avatar = member.get("avatar_url")
+                if _is_valid_url(avatar):
+                    embed.set_thumbnail(url=avatar)
+                    break
+
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    async def _reply_profile(self, interaction: discord.Interaction, user: discord.User) -> None:
+    async def _reply_profile(self, interaction: discord.Interaction, user: discord.User | discord.Member) -> None:
         data = await self.fetch_pk_data(f"/systems/{user.id}")
         if _error_code(data):
             await self._send_pk_error(interaction, user, data, "system")
@@ -181,15 +246,20 @@ class PKLens(commands.Cog):
             color=_embed_color(data.get("color")),
         )
         embed.add_field(name="Pronouns", value=_clip(str(pronouns), _FIELD_LIMIT), inline=True)
-        if data.get("avatar_url"):
-            embed.set_thumbnail(url=data["avatar_url"])
+
+        avatar = data.get("avatar_url")
+        if _is_valid_url(avatar):
+            embed.set_thumbnail(url=avatar)
+
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # --- Slash Commands & User App Callbacks ---
 
     @app_commands.command(name="pklens", description="View info about the PKLens app and how to use it.")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(public="Set to True to share the info message with the channel (default: False)")
-    async def pklens_help(self, interaction: discord.Interaction, public: bool = False):
+    async def pklens_help(self, interaction: discord.Interaction, public: bool = False) -> None:
         embed = discord.Embed(
             title="🔍 PKLens",
             description=(
@@ -220,35 +290,21 @@ class PKLens(commands.Cog):
     )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    async def pkfronters_slash(self, interaction: discord.Interaction, user: discord.User):
+    async def pkfronters_slash(self, interaction: discord.Interaction, user: discord.User) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._reply_fronters(interaction, user)
 
     @app_commands.command(name="pkprofile", description="View a user's PluralKit system profile.")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    async def pkprofile_slash(self, interaction: discord.Interaction, user: discord.User):
+    async def pkprofile_slash(self, interaction: discord.Interaction, user: discord.User) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._reply_profile(interaction, user)
 
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    async def check_fronter_callback(self, interaction: discord.Interaction, user: discord.User):
+    async def check_fronter_callback(self, interaction: discord.Interaction, user: discord.User) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._reply_fronters(interaction, user)
 
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    async def view_profile_callback(self, interaction: discord.Interaction, user: discord.User):
+    async def view_profile_callback(self, interaction: discord.Interaction, user: discord.User) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._reply_profile(interaction, user)
-
-
-def _retry_seconds(value: Any) -> Optional[str]:
-    try:
-        seconds = int(float(value))
-    except (TypeError, ValueError):
-        return None
-    if seconds < 0 or seconds > 3600:
-        return None
-    return str(seconds)
