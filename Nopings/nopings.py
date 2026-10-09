@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import functools
 import logging
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 import discord
 from redbot.core import Config, commands
@@ -14,8 +14,8 @@ log = logging.getLogger("red.strifecogs.nopings")
 class NoPings(commands.Cog):
     """Prevents the bot from sending notification pings when replying to commands."""
 
-    __version__ = "1.0.0"
-    __author__ = "SinOfStrife"
+    __version__ = "1.0.1"
+    __author__ = ["SinOfStrife"]
     __red_end_user_data_statement__ = (
         "This cog stores Discord User IDs and Guild IDs to remember notification "
         "and reply ping preferences."
@@ -27,26 +27,23 @@ class NoPings(commands.Cog):
             self, identifier=948172635481, force_registration=True
         )
 
-        # Default settings:
-        # Users can opt-in to silence pings, or guilds can silence pings server-wide
-        self.config.register_user(nopings=True)
+        # Opt-In default: Bot pings normally unless enabled
+        self.config.register_user(nopings=False)
         self.config.register_guild(all_silent=False)
 
-        # FAST IN-MEMORY CACHES (O(1) lookups, zero disk I/O on messages)
+        # In-memory caches for O(1) lookups
         self._user_cache: set[int] = set()
         self._guild_cache: set[int] = set()
 
-        # Preserve original method for safe restoration
         self._original_context_send = getattr(
             commands.Context, "_nopings_original_send", commands.Context.send
         )
-        self._patch_context_send()
 
     async def cog_load(self) -> None:
-        """Pre-populate the RAM cache so message sending never waits on the database."""
+        """Pre-populate cache and safely patch Context.send on load."""
         user_data = await self.config.all_users()
         self._user_cache = {
-            user_id for user_id, data in user_data.items() if data.get("nopings", True)
+            user_id for user_id, data in user_data.items() if data.get("nopings", False)
         }
 
         guild_data = await self.config.all_guilds()
@@ -54,42 +51,47 @@ class NoPings(commands.Cog):
             guild_id for guild_id, data in guild_data.items() if data.get("all_silent", False)
         }
 
-    async def cog_unload(self) -> None:
-        """Restore Context.send back to normal when unloaded."""
+        self._patch_context_send()
+
+    def cog_unload(self) -> None:
+        """Synchronously restore Context.send when unloaded."""
         commands.Context.send = self._original_context_send
         if hasattr(commands.Context, "_nopings_original_send"):
             delattr(commands.Context, "_nopings_original_send")
         log.info("NoPings unloaded: Restored default Context.send pipeline.")
 
     def _patch_context_send(self) -> None:
-        """Safely intercept Context.send without double-stacking on reload."""
+        """Intercept Context.send to handle reply mentions."""
         commands.Context._nopings_original_send = self._original_context_send
         original = self._original_context_send
         cog = self
 
         @functools.wraps(original)
         async def patched_send(ctx_self: commands.Context, *args: Any, **kwargs: Any) -> discord.Message:
-            # Check if this message is an inline reply (ctx.reply or ctx.send(reference=...))
-            has_reference = "reference" in kwargs or getattr(ctx_self, "message", None) is not None
+            # Check strictly if this message is a reply
+            has_reference = bool(kwargs.get("reference"))
 
             if has_reference:
                 author_id = ctx_self.author.id
                 guild_id = ctx_self.guild.id if ctx_self.guild else None
 
-                # Silence if user opted in OR if guild enforces it server-wide
                 silence_user = author_id in cog._user_cache
                 silence_guild = guild_id is not None and guild_id in cog._guild_cache
 
                 if silence_user or silence_guild:
-                    # Only modify if another cog didn't explicitly override it
                     if "mention_author" not in kwargs:
                         kwargs["mention_author"] = False
 
-                    # Ensure allowed_mentions does not contradict mention_author
+                    # Clone AllowedMentions to avoid mutating shared objects
                     if "allowed_mentions" in kwargs and kwargs["allowed_mentions"] is not None:
-                        kwargs["allowed_mentions"].replied_user = False
+                        existing = kwargs["allowed_mentions"]
+                        kwargs["allowed_mentions"] = discord.AllowedMentions(
+                            everyone=existing.everyone,
+                            roles=existing.roles,
+                            users=existing.users,
+                            replied_user=False,
+                        )
                     elif "allowed_mentions" not in kwargs:
-                        # Copy bot's current base mentions to avoid wiping owner safety rules
                         base_allowed = getattr(
                             cog.bot, "allowed_mentions", discord.AllowedMentions.default()
                         )
@@ -104,7 +106,7 @@ class NoPings(commands.Cog):
 
         commands.Context.send = patched_send
 
-    # --- GDPR / End-User Data Handlers (Mandatory for QA) ---
+    # --- GDPR / End-User Data Handlers ---
 
     async def red_get_data_for_user(self, *, user_id: int) -> dict[str, Any]:
         """Return stored data for a user."""
