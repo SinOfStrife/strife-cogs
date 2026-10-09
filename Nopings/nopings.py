@@ -14,7 +14,7 @@ log = logging.getLogger("red.strifecogs.nopings")
 class NoPings(commands.Cog):
     """Prevents the bot from sending notification pings when replying to commands."""
 
-    __version__ = "1.1.1"
+    __version__ = "1.1.2"
     __author__ = ["SinOfStrife"]
     __red_end_user_data_statement__ = (
         "This cog stores Discord User IDs and Guild IDs to remember notification "
@@ -201,7 +201,7 @@ class NoPings(commands.Cog):
     @commands.admin_or_permissions(manage_guild=True)
     async def noping_set(self, ctx: commands.Context) -> None:
         """Manage NoPings settings for this server."""
-        await self.noping_showsettings(ctx)
+        await ctx.send_help()
 
     @noping_set.command(name="showsettings", aliases=["show"])
     async def noping_showsettings(self, ctx: commands.Context) -> None:
@@ -212,8 +212,8 @@ class NoPings(commands.Cog):
 
         if protected_ids:
             mentions = [f"<@{uid}>" for uid in protected_ids]
-            # Safely guard against Discord's 1,024-character embed field limit
             members_text = ", ".join(mentions)
+            # Guard against Discord's 1,024-character embed limit
             if len(members_text) > 1000:
                 shown = []
                 current_len = 0
