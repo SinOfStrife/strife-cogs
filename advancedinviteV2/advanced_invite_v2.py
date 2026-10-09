@@ -3,6 +3,8 @@
 
 import logging
 from typing import Any, Dict, Final, List, Optional, Union
+from urllib.parse import urlparse
+
 import discord
 from discord import app_commands
 from discord.http import Route
@@ -18,6 +20,11 @@ from .utils import (
 )
 
 log = logging.getLogger("red.advancedinvitev2")
+
+# Required by Red QA: End User Data statement for cog approval
+__red_end_user_data_statement__: Final[str] = (
+    "This cog does not persistently store any personal end-user data."
+)
 
 
 async def can_invite(ctx: commands.Context) -> bool:
@@ -39,12 +46,12 @@ class AdvancedInviteV2(commands.Cog):
     """An advanced invite cog built using Discord Components V2 layout structures."""
 
     __authors__: Final[List[str]] = ["Jojo#7791", "sinofstrife"]
-    __version__: Final[str] = "4.5.0"
+    __version__: Final[str] = "4.5.1"
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
         self._invite_command: Optional[commands.Command] = self.bot.remove_command("invite")
-        # Your unique cog storage ID
+        # Unique cog storage ID
         self.config = Config.get_conf(self, 957289026195435520, force_registration=True)
         self.config.register_global(**_config_structure)
 
@@ -240,7 +247,6 @@ class AdvancedInviteV2(commands.Cog):
         me = interaction.guild.me if interaction.guild else self.bot.user
         payload = await self._build_invite_payload(me)
 
-        # If used directly in bot DMs, show the card immediately
         if interaction.guild is None:
             try:
                 app_id = interaction.application_id or self.bot.application_id
@@ -258,7 +264,6 @@ class AdvancedInviteV2(commands.Cog):
                 await interaction.followup.send(f"An error occurred: `{error}`", ephemeral=True)
             return
 
-        # If used in a server channel, send to DMs
         try:
             dm_channel = interaction.user.dm_channel or await interaction.user.create_dm()
             await self._send_raw_v2_payload(dm_channel.id, payload)
@@ -306,7 +311,6 @@ class AdvancedInviteV2(commands.Cog):
         me = ctx.me or self.bot.user
         payload = await self._build_invite_payload(me)
 
-        # If already in the bot's DMs, send the card directly and do NOT send a follow-up ping!
         if ctx.guild is None:
             try:
                 await self._send_raw_v2_payload(ctx.channel.id, payload)
@@ -315,7 +319,6 @@ class AdvancedInviteV2(commands.Cog):
                 await ctx.send(f"Failed to send invite: `{error}`")
             return
 
-        # If in a server channel, send to DMs and notify the user
         try:
             dm_channel = ctx.author.dm_channel or await ctx.author.create_dm()
             await self._send_raw_v2_payload(dm_channel.id, payload)
@@ -363,7 +366,7 @@ class AdvancedInviteV2(commands.Cog):
 
     @invite_settings.command(name="url", aliases=("boturl", "botinvite", "customurl", "custominvite", "link"))
     async def invite_url(
-        self, ctx: commands.Context, *, invite: Union[InviteNoneConverter, NoneConverter]
+        self, ctx: commands.Context, *, invite: Union[InviteNoneConverter, NoneConverter, str]
     ) -> None:
         """Set a custom bot invite URL for the main invite button.
 
@@ -376,8 +379,10 @@ class AdvancedInviteV2(commands.Cog):
         """
         try:
             invite_url = getattr(invite, "url", invite)
-            if invite_url and isinstance(invite_url, str) and invite_url.lower() in ("default", "none", "reset"):
-                invite_url = None
+            if isinstance(invite_url, str):
+                invite_url = invite_url.strip().strip("<>").strip()
+                if invite_url.lower() in ("default", "none", "reset", "clear"):
+                    invite_url = None
 
             if not invite_url:
                 await self.config.custom_invite.set(None)
@@ -387,8 +392,15 @@ class AdvancedInviteV2(commands.Cog):
                 )
                 return
 
-            if isinstance(invite_url, str) and not (invite_url.startswith("http://") or invite_url.startswith("https://")):
+            if isinstance(invite_url, str) and not (
+                invite_url.startswith("http://") or invite_url.startswith("https://")
+            ):
                 invite_url = f"https://{invite_url}"
+
+            parsed = urlparse(invite_url)
+            if not parsed.netloc or parsed.scheme not in ("http", "https") or len(invite_url) > 512:
+                await ctx.send("Please provide a valid HTTP or HTTPS invite URL (max 512 characters).")
+                return
 
             await self.config.custom_invite.set(str(invite_url))
             await ctx.send(f"The main invite button URL has been set to: <{invite_url}>.")
@@ -397,18 +409,47 @@ class AdvancedInviteV2(commands.Cog):
             await ctx.send(f"Failed to update custom invite URL: `{error}`")
 
     @invite_settings.command(name="support")
-    async def invite_support(self, ctx: commands.Context, invite: InviteNoneConverter) -> None:
+    async def invite_support(
+        self, ctx: commands.Context, *, invite: Union[InviteNoneConverter, NoneConverter, str]
+    ) -> None:
         """Set the support server invite button.
 
         **Usage:**
         • `[p]invite set support https://discord.gg/yourinvite`
         • `[p]invite set support none` (removes the button completely)
+        • `[p]invite set support default`
         """
         try:
             invite_url = getattr(invite, "url", invite)
-            set_reset = f"set to: <{invite_url}>." if invite_url else "removed."
-            await self.config.support_server.set(invite_url)
-            await ctx.send(f"The support server button has been {set_reset}")
+
+            # Strip whitespace and any angle brackets <url>
+            if isinstance(invite_url, str):
+                invite_url = invite_url.strip().strip("<>").strip()
+                if invite_url.lower() in ("default", "none", "reset", "clear", "disable"):
+                    invite_url = None
+
+            # Handle reset / removal
+            if not invite_url:
+                await self.config.support_server.set(None)
+                await ctx.send("The support server button has been removed.")
+                return
+
+            # Ensure valid protocol scheme for Discord Link Button (style 5)
+            if isinstance(invite_url, str) and not (
+                invite_url.startswith("http://") or invite_url.startswith("https://")
+            ):
+                invite_url = f"https://{invite_url}"
+
+            # Red QA Input Safety Check: ensure the button URL is valid
+            parsed = urlparse(invite_url)
+            if not parsed.netloc or parsed.scheme not in ("http", "https") or len(invite_url) > 512:
+                await ctx.send(
+                    "Invalid URL provided. Please pass a valid Discord invite or web link (max 512 characters)."
+                )
+                return
+
+            await self.config.support_server.set(str(invite_url))
+            await ctx.send(f"The support server button has been set to: <{invite_url}>.")
         except Exception as error:
             log.exception("Failed to update support server setting.")
             await ctx.send(f"Failed to update support server: `{error}`")
