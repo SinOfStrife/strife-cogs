@@ -1,11 +1,11 @@
 {
-    "author": ["Strife"],
+    "author": ["SinOfStrife"],
     "install_msg": "Thanks for installing the Fox cog! Use `[p]fox` to fetch a random fox. Note: This cog interacts with an external web service (randomfox.ca).",
     "name": "fox",
     "short": "Sends a random fox.",
     "description": "Fetches a random fox image from an external API.",
     "tags": ["fun", "animals"],
-    "requirements": ["aiohttp"],
+    "min_bot_version": "3.5.0",
     "hidden": false,
     "type": "COG",
     "end_user_data_statement": "This cog does not persistently store any personal or user data."
