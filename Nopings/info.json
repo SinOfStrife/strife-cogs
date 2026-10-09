@@ -1,14 +1,9 @@
 {
-  "author": ["sinofstrife"],
+  "author": ["SinOfStrife"],
   "name": "NoPings",
-  "short": "Suppresses reply pings globally or for specific users.",
-  "description": "Prevents the bot from using ping replies globally across the server or for specifically targeted users.",
-  "tags": ["utility", "pings", "replies"],
+  "short": "Prevents the bot from pinging users when replying to them.",
+  "description": "Stops notification pings when the bot replies to commands. Users can toggle this preference for themselves, or admins can enforce it server-wide.",
+  "tags": ["utility", "replies", "mentions", "notifications"],
   "min_bot_version": "3.5.0",
-  "hidden": false,
-  "disabled": false,
-  "type": "COG",
-  "permissions": ["add_reactions", "read_message_history"],
-  "install_msg": "Thanks for installing NoPings! Use `[p]nopings toggle` to silence bot reply pings server-wide, or `[p]nopings add @user` to add specific members.",
-  "end_user_data_statement": "This cog stores Discord User IDs on a per-guild basis to maintain a no-ping reply list."
+  "end_user_data_statement": "This cog stores Discord User IDs and Guild IDs to remember notification and reply ping preferences."
 }
