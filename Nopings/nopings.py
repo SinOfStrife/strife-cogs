@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import functools
 import logging
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import discord
 from redbot.core import Config, commands
@@ -14,7 +14,7 @@ log = logging.getLogger("red.strifecogs.nopings")
 class NoPings(commands.Cog):
     """Prevents the bot from sending notification pings when replying to commands."""
 
-    __version__ = "1.0.1"
+    __version__ = "1.1.0"
     __author__ = ["SinOfStrife"]
     __red_end_user_data_statement__ = (
         "This cog stores Discord User IDs and Guild IDs to remember notification "
@@ -29,18 +29,19 @@ class NoPings(commands.Cog):
 
         # Opt-In default: Bot pings normally unless enabled
         self.config.register_user(nopings=False)
-        self.config.register_guild(all_silent=False)
+        self.config.register_guild(all_silent=False, protected_users=[])
 
-        # In-memory caches for O(1) lookups
+        # Fast in-memory caches (zero disk I/O on messages)
         self._user_cache: set[int] = set()
         self._guild_cache: set[int] = set()
+        self._guild_protected: dict[int, set[int]] = {}
 
         self._original_context_send = getattr(
             commands.Context, "_nopings_original_send", commands.Context.send
         )
 
     async def cog_load(self) -> None:
-        """Pre-populate cache and safely patch Context.send on load."""
+        """Pre-populate caches and safely patch Context.send on load."""
         user_data = await self.config.all_users()
         self._user_cache = {
             user_id for user_id, data in user_data.items() if data.get("nopings", False)
@@ -49,6 +50,10 @@ class NoPings(commands.Cog):
         guild_data = await self.config.all_guilds()
         self._guild_cache = {
             guild_id for guild_id, data in guild_data.items() if data.get("all_silent", False)
+        }
+        self._guild_protected = {
+            guild_id: set(data.get("protected_users", []))
+            for guild_id, data in guild_data.items()
         }
 
         self._patch_context_send()
@@ -68,7 +73,7 @@ class NoPings(commands.Cog):
 
         @functools.wraps(original)
         async def patched_send(ctx_self: commands.Context, *args: Any, **kwargs: Any) -> discord.Message:
-            # Check strictly if this message is a reply
+            # Strictly check if this message is a reply
             has_reference = bool(kwargs.get("reference"))
 
             if has_reference:
@@ -77,8 +82,12 @@ class NoPings(commands.Cog):
 
                 silence_user = author_id in cog._user_cache
                 silence_guild = guild_id is not None and guild_id in cog._guild_cache
+                silence_protected = (
+                    guild_id is not None
+                    and author_id in cog._guild_protected.get(guild_id, set())
+                )
 
-                if silence_user or silence_guild:
+                if silence_user or silence_guild or silence_protected:
                     if "mention_author" not in kwargs:
                         kwargs["mention_author"] = False
 
@@ -110,8 +119,16 @@ class NoPings(commands.Cog):
 
     async def red_get_data_for_user(self, *, user_id: int) -> dict[str, Any]:
         """Return stored data for a user."""
-        is_silenced = user_id in self._user_cache
-        return {"nopings": is_silenced}
+        is_opted_in = user_id in self._user_cache
+        protected_guilds = [
+            str(guild_id)
+            for guild_id, users in self._guild_protected.items()
+            if user_id in users
+        ]
+        return {
+            "personal_noping": is_opted_in,
+            "force_silenced_in_guilds": protected_guilds,
+        }
 
     async def red_delete_data_for_user(
         self,
@@ -119,13 +136,20 @@ class NoPings(commands.Cog):
         requester: Literal["discord_deleted_user", "owner", "user", "user_strict"],
         user_id: int,
     ) -> None:
-        """Delete stored user data on request."""
+        """Delete stored user data on request across user and guild records."""
         await self.config.user_from_id(user_id).clear()
         self._user_cache.discard(user_id)
 
-    # --- Commands ---
+        for guild_id, users in list(self._guild_protected.items()):
+            if user_id in users:
+                users.discard(user_id)
+                async with self.config.guild_from_id(guild_id).protected_users() as p_users:
+                    if user_id in p_users:
+                        p_users.remove(user_id)
 
-    @commands.group(name="noping", invoke_without_command=True)
+    # --- User Commands ---
+
+    @commands.group(name="noping", aliases=["nopings"], invoke_without_command=True)
     async def noping(self, ctx: commands.Context) -> None:
         """Toggle whether the bot pings you when it replies to your commands."""
         current = ctx.author.id in self._user_cache
@@ -140,11 +164,84 @@ class NoPings(commands.Cog):
             await self.config.user(ctx.author).nopings.set(False)
             await ctx.send("Silent replies **disabled**: The bot will ping you normally when replying.")
 
-    @noping.command(name="server")
+    @noping.command(name="test")
+    @commands.guild_only()
+    async def noping_test(self, ctx: commands.Context, member: Optional[discord.Member] = None) -> None:
+        """Check if you or another member are currently silenced in this server."""
+        target = member or ctx.author
+        guild_id = ctx.guild.id
+
+        is_personal = target.id in self._user_cache
+        is_guild = guild_id in self._guild_cache
+        is_force = target.id in self._guild_protected.get(guild_id, set())
+
+        is_silenced = is_personal or is_guild or is_force
+
+        if is_silenced:
+            reasons = []
+            if is_guild:
+                reasons.append("server-wide setting is ON")
+            if is_force:
+                reasons.append("force-silenced by an admin in this server")
+            if is_personal:
+                reasons.append("personal preference is enabled")
+
+            await ctx.send(
+                f"🔇 **{target.display_name}** will **not** be pinged on replies ({', '.join(reasons)})."
+            )
+        else:
+            await ctx.send(
+                f"🔔 **{target.display_name}** will be pinged normally on replies."
+            )
+
+    # --- Admin Settings Group ---
+
+    @noping.group(name="set", aliases=["settings"], invoke_without_command=True)
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
-    async def noping_server(self, ctx: commands.Context) -> None:
-        """Toggle silent bot replies for everyone in this server."""
+    async def noping_set(self, ctx: commands.Context) -> None:
+        """Manage NoPings settings for this server."""
+        await self.noping_showsettings(ctx)
+
+    @noping_set.command(name="showsettings")
+    async def noping_showsettings(self, ctx: commands.Context) -> None:
+        """Display active NoPings settings for this server."""
+        guild_id = ctx.guild.id
+        all_silent = guild_id in self._guild_cache
+        protected_ids = self._guild_protected.get(guild_id, set())
+
+        if protected_ids:
+            members_text = ", ".join(f"<@{uid}>" for uid in protected_ids)
+        else:
+            members_text = "None"
+
+        can_embed = ctx.channel.permissions_for(ctx.me).embed_links
+        if can_embed:
+            embed = discord.Embed(
+                title=f"NoPings Settings — {ctx.guild.name}",
+                color=await ctx.embed_color(),
+            )
+            embed.add_field(
+                name="Server-Wide Silent Replies",
+                value="Enabled" if all_silent else "Disabled",
+                inline=False,
+            )
+            embed.add_field(
+                name=f"Force-Silenced Members ({len(protected_ids)})",
+                value=members_text,
+                inline=False,
+            )
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send(
+                f"**NoPings Settings — {ctx.guild.name}**\n"
+                f"• Server-Wide Silent Replies: {'Enabled' if all_silent else 'Disabled'}\n"
+                f"• Force-Silenced Members ({len(protected_ids)}): {members_text}"
+            )
+
+    @noping_set.command(name="toggle")
+    async def noping_toggle(self, ctx: commands.Context) -> None:
+        """Toggle server-wide silent replies on or off for everyone."""
         guild_id = ctx.guild.id
         current = guild_id in self._guild_cache
         new_state = not current
@@ -157,3 +254,36 @@ class NoPings(commands.Cog):
             self._guild_cache.discard(guild_id)
             await self.config.guild(ctx.guild).all_silent.set(False)
             await ctx.send("Server-wide silent replies **disabled**: Standard user preferences now apply.")
+
+    @noping_set.command(name="add")
+    async def noping_add(self, ctx: commands.Context, member: discord.Member) -> None:
+        """Force-add a member to this server's silent reply list."""
+        guild_id = ctx.guild.id
+        protected = self._guild_protected.setdefault(guild_id, set())
+
+        if member.id in protected:
+            await ctx.send(f"**{member.display_name}** is already force-silenced in this server.")
+            return
+
+        protected.add(member.id)
+        async with self.config.guild(ctx.guild).protected_users() as users:
+            users.append(member.id)
+
+        await ctx.send(f"**{member.display_name}** has been force-added to this server's silent reply list.")
+
+    @noping_set.command(name="remove")
+    async def noping_remove(self, ctx: commands.Context, member: discord.Member) -> None:
+        """Remove a member from this server's force-silenced list."""
+        guild_id = ctx.guild.id
+        protected = self._guild_protected.get(guild_id, set())
+
+        if member.id not in protected:
+            await ctx.send(f"**{member.display_name}** is not in this server's force-silenced list.")
+            return
+
+        protected.discard(member.id)
+        async with self.config.guild(ctx.guild).protected_users() as users:
+            if member.id in users:
+                users.remove(member.id)
+
+        await ctx.send(f"**{member.display_name}** has been removed from this server's force-silenced list.")
