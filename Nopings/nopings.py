@@ -14,7 +14,7 @@ log = logging.getLogger("red.strifecogs.nopings")
 class NoPings(commands.Cog):
     """Prevents the bot from sending notification pings when replying to commands."""
 
-    __version__ = "1.1.0"
+    __version__ = "1.1.1"
     __author__ = ["SinOfStrife"]
     __red_end_user_data_statement__ = (
         "This cog stores Discord User IDs and Guild IDs to remember notification "
@@ -203,7 +203,7 @@ class NoPings(commands.Cog):
         """Manage NoPings settings for this server."""
         await self.noping_showsettings(ctx)
 
-    @noping_set.command(name="showsettings")
+    @noping_set.command(name="showsettings", aliases=["show"])
     async def noping_showsettings(self, ctx: commands.Context) -> None:
         """Display active NoPings settings for this server."""
         guild_id = ctx.guild.id
@@ -211,7 +211,19 @@ class NoPings(commands.Cog):
         protected_ids = self._guild_protected.get(guild_id, set())
 
         if protected_ids:
-            members_text = ", ".join(f"<@{uid}>" for uid in protected_ids)
+            mentions = [f"<@{uid}>" for uid in protected_ids]
+            # Safely guard against Discord's 1,024-character embed field limit
+            members_text = ", ".join(mentions)
+            if len(members_text) > 1000:
+                shown = []
+                current_len = 0
+                for m in mentions:
+                    if current_len + len(m) + 2 > 950:
+                        break
+                    shown.append(m)
+                    current_len += len(m) + 2
+                remaining = len(mentions) - len(shown)
+                members_text = f"{', '.join(shown)} ... and {remaining} more"
         else:
             members_text = "None"
 
