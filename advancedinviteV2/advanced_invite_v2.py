@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2026 Jojo#7791, sinofstrife and Contributors
+# Copyright (c) 2021-2026 Jojo#7791, SinOfStrife and Contributors
 # Licensed under the MIT License
 
 import logging
@@ -6,9 +6,8 @@ from typing import Any, Dict, Final, List, Optional, Union
 from urllib.parse import urlparse
 
 import discord
-from discord import app_commands
 from discord.http import Route
-from redbot.core import Config, commands
+from redbot.core import Config, app_commands, commands
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import humanize_list, humanize_number
 from .utils import (
@@ -21,9 +20,9 @@ from .utils import (
 
 log = logging.getLogger("red.advancedinvitev2")
 
-# Required by Red QA: End User Data statement for cog approval
+# Required by Red QA: End User Data statement matching info.json verbatim
 __red_end_user_data_statement__: Final[str] = (
-    "This cog does not persistently store any personal end-user data."
+    "This cog does not store end user data."
 )
 
 
@@ -45,7 +44,7 @@ _config_structure: Final[Dict[str, Any]] = {
 class AdvancedInviteV2(commands.Cog):
     """An advanced invite cog built using Discord Components V2 layout structures."""
 
-    __authors__: Final[List[str]] = ["Jojo#7791", "sinofstrife"]
+    __author__: Final[List[str]] = ["Jojo#7791", "SinOfStrife"]
     __version__: Final[str] = "4.5.1"
 
     def __init__(self, bot: Red) -> None:
@@ -55,7 +54,16 @@ class AdvancedInviteV2(commands.Cog):
         self.config = Config.get_conf(self, 957289026195435520, force_registration=True)
         self.config.register_global(**_config_structure)
 
-    async def red_delete_data_for_user(self, *, requester: Any, user_id: int) -> None:
+    async def red_get_data_for_user(self, *, user_id: int) -> Dict[str, Any]:
+        """Required by Red QA: This cog does not store any personal user data."""
+        return {}
+
+    async def red_delete_data_for_user(
+        self,
+        *,
+        requester: Any,
+        user_id: int,
+    ) -> None:
         """Required by Red QA: This cog does not store any personal user data."""
         return
 
@@ -69,10 +77,10 @@ class AdvancedInviteV2(commands.Cog):
         return humanize_list([f"`{i}`" for i in data])
 
     def format_help_for_context(self, ctx: commands.Context) -> str:
-        plural = "" if len(self.__authors__) == 1 else "s"
+        plural = "" if len(self.__author__) == 1 else "s"
         return (
             f"{super().format_help_for_context(ctx)}\n"
-            f"**Author{plural}:** {self._humanize_list(self.__authors__)}\n"
+            f"**Author{plural}:** {self._humanize_list(self.__author__)}\n"
             f"**Version:** `{self.__version__}`"
         )
 
@@ -229,7 +237,11 @@ class AdvancedInviteV2(commands.Cog):
     # ==========================================
     # PUBLIC SLASH COMMAND
     # ==========================================
-    @app_commands.command(name="invite", description="Get the official invite link for the bot.")
+    @app_commands.command(
+        name="invite",
+        description="Get the official invite link for the bot.",
+        extras={"red_force_enable": True},
+    )
     async def slash_invite(self, interaction: discord.Interaction) -> None:
         """Request the bot's invite link through Discord's slash command menu."""
         is_owner = await self.bot.is_owner(interaction.user)
@@ -244,7 +256,7 @@ class AdvancedInviteV2(commands.Cog):
 
         await interaction.response.defer(ephemeral=True)
 
-        me = interaction.guild.me if interaction.guild else self.bot.user
+        me = (interaction.guild.me if interaction.guild else None) or self.bot.user
         payload = await self._build_invite_payload(me)
 
         if interaction.guild is None:
@@ -301,6 +313,7 @@ class AdvancedInviteV2(commands.Cog):
     # ==========================================
     # PREFIX COMMANDS ([p]invite and settings)
     # ==========================================
+    @commands.bot_has_permissions(send_messages=True)
     @commands.group(name="invite", usage="", invoke_without_command=True)
     @commands.check(can_invite)
     async def invite(self, ctx: commands.Context) -> None:
@@ -371,11 +384,6 @@ class AdvancedInviteV2(commands.Cog):
         """Set a custom bot invite URL for the main invite button.
 
         If set to `none` or `default`, it falls back to the bot's default generated invite URL.
-
-        **Usage:**
-        • `[p]invite set url https://discord.com/oauth2/authorize?client_id=123...`
-        • `[p]invite set url none` (resets back to the bot's default invite)
-        • `[p]invite set url default`
         """
         try:
             invite_url = getattr(invite, "url", invite)
@@ -412,35 +420,28 @@ class AdvancedInviteV2(commands.Cog):
     async def invite_support(
         self, ctx: commands.Context, *, invite: Union[InviteNoneConverter, NoneConverter, str]
     ) -> None:
-        """Set the support server invite button.
+        """Set the support server or help link button.
 
-        **Usage:**
-        • `[p]invite set support https://discord.gg/yourinvite`
-        • `[p]invite set support none` (removes the button completely)
-        • `[p]invite set support default`
+        Accepts Discord server invites, documentation links, or external support portals.
         """
         try:
             invite_url = getattr(invite, "url", invite)
 
-            # Strip whitespace and any angle brackets <url>
             if isinstance(invite_url, str):
                 invite_url = invite_url.strip().strip("<>").strip()
                 if invite_url.lower() in ("default", "none", "reset", "clear", "disable"):
                     invite_url = None
 
-            # Handle reset / removal
             if not invite_url:
                 await self.config.support_server.set(None)
                 await ctx.send("The support server button has been removed.")
                 return
 
-            # Ensure valid protocol scheme for Discord Link Button (style 5)
             if isinstance(invite_url, str) and not (
                 invite_url.startswith("http://") or invite_url.startswith("https://")
             ):
                 invite_url = f"https://{invite_url}"
 
-            # Red QA Input Safety Check: ensure the button URL is valid
             parsed = urlparse(invite_url)
             if not parsed.netloc or parsed.scheme not in ("http", "https") or len(invite_url) > 512:
                 await ctx.send(
@@ -449,24 +450,14 @@ class AdvancedInviteV2(commands.Cog):
                 return
 
             await self.config.support_server.set(str(invite_url))
-            await ctx.send(f"The support server button has been set to: <{invite_url}>.")
+            await ctx.send(f"The support button has been set to: <{invite_url}>.")
         except Exception as error:
-            log.exception("Failed to update support server setting.")
-            await ctx.send(f"Failed to update support server: `{error}`")
+            log.exception("Failed to update support setting.")
+            await ctx.send(f"Failed to update support setting: `{error}`")
 
     @invite_settings.command(name="message")
     async def invite_message(self, ctx: commands.Context, *, message: NoneStrict) -> None:
-        """Set the body text of the invite layout.
-
-        **Live Placeholders:**
-        • `{bot_name}`: The bot's name
-        • `{guild_count}`: Number of servers the bot is in
-        • `{user_count}`: Total users served
-
-        **Usage:**
-        • `[p]invite set message Thanks for choosing {bot_name}! Serving {user_count} users across {guild_count} servers.`
-        • `[p]invite set message default` (resets to default)
-        """
+        """Set the body text of the invite layout."""
         try:
             if message is None:
                 message = _config_structure["custom_message"]
@@ -484,17 +475,7 @@ class AdvancedInviteV2(commands.Cog):
 
     @invite_settings.command(name="title")
     async def invite_title(self, ctx: commands.Context, *, title: NoneStrict) -> None:
-        """Set the title heading of the invite layout.
-
-        **Live Placeholders:**
-        • `{bot_name}`: The bot's name
-        • `{guild_count}`: Number of servers the bot is in
-        • `{user_count}`: Total users served
-
-        **Usage:**
-        • `[p]invite set title Add {bot_name} to your server!`
-        • `[p]invite set title default` (resets to default)
-        """
+        """Set the title heading of the invite layout."""
         try:
             if title is None:
                 title = _config_structure["title"]
@@ -509,17 +490,7 @@ class AdvancedInviteV2(commands.Cog):
 
     @invite_settings.command(name="footer")
     async def invite_footer(self, ctx: commands.Context, *, footer: NoneConverter) -> None:
-        """Set a small subtext footer at the bottom of the container.
-
-        **Live Placeholders:**
-        • `{bot_name}`: The bot's name
-        • `{guild_count}`: Number of servers the bot is in
-        • `{user_count}`: Total users served
-
-        **Usage:**
-        • `[p]invite set footer Serving {user_count} users across {guild_count} servers.`
-        • `[p]invite set footer none` (removes the footer)
-        """
+        """Set a small subtext footer at the bottom of the container."""
         try:
             if not footer:
                 await self.config.footer.set(None)
@@ -536,13 +507,7 @@ class AdvancedInviteV2(commands.Cog):
 
     @invite_settings.command(name="color", aliases=("colour", "accent"))
     async def invite_color(self, ctx: commands.Context, *, color: ColorNoneConverter) -> None:
-        """Set the border/accent color of the container.
-
-        **Usage:**
-        • Hex code: `[p]invite set color #5865F2`
-        • Color name: `[p]invite set color blurple` or `[p]invite set color dark_teal`
-        • Reset: `[p]invite set color default`
-        """
+        """Set the border/accent color of the container."""
         try:
             if color is None:
                 color = _config_structure["accent_color"]
@@ -557,13 +522,7 @@ class AdvancedInviteV2(commands.Cog):
 
     @invite_settings.command(name="thumbnail", aliases=("thumb", "icon"))
     async def invite_thumbnail(self, ctx: commands.Context, *, thumbnail: ThumbnailConverter) -> None:
-        """Set a compact thumbnail image next to the title and message.
-
-        **Usage:**
-        • Use bot avatar: `[p]invite set thumbnail bot`
-        • Direct image link: `[p]invite set thumbnail https://example.com/logo.png`
-        • Remove thumbnail: `[p]invite set thumbnail none`
-        """
+        """Set a compact thumbnail image next to the title and message."""
         try:
             if thumbnail is None:
                 await self.config.thumbnail.set(None)
