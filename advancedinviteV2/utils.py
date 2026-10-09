@@ -1,8 +1,10 @@
-# Copyright (c) 2021-2026 Jojo#7791, sinofstrife and Contributors
+# Copyright (c) 2021-2026 Jojo#7791, SinOfStrife and Contributors
 # Licensed under the MIT License
 
 import logging
 from typing import Optional, Union
+from urllib.parse import urlparse
+
 import discord
 from redbot.core import commands
 
@@ -27,21 +29,32 @@ class NoneStrict(NoneConverter):
 class InviteNoneConverter(commands.Converter):
     async def convert(
         self, ctx: commands.Context, argument: str
-    ) -> Union[discord.Invite, str, None]:
-        if argument.lower() in ("none", "nil", "null", "reset"):
+    ) -> Optional[str]:
+        if argument.lower() in ("none", "nil", "null", "reset", "clear", "disable"):
             return None
 
-        # If it's a bot OAuth authorization link, return it directly without pinging Discord
-        if "oauth2" in argument.lower() or "authorize" in argument.lower():
-            return argument
+        cleaned = argument.strip().strip("<>").strip()
+        if not (cleaned.startswith("http://") or cleaned.startswith("https://")):
+            cleaned = f"https://{cleaned}"
 
-        try:
-            invite = await discord.Invite.from_url(ctx.bot, argument)
-            return invite
-        except discord.NotFound:
-            raise commands.BadArgument("That invite link is invalid or has expired.")
-        except discord.HTTPException:
-            raise commands.BadArgument("Discord encountered an error while verifying that invite link.")
+        parsed = urlparse(cleaned)
+        if not parsed.netloc or parsed.scheme not in ("http", "https") or len(cleaned) > 512:
+            raise commands.BadArgument(
+                "Please provide a valid web link starting with `http://` or `https://` (max 512 characters)."
+            )
+
+        # If it is a Discord server invite, verify it; otherwise, allow external/off-Discord links
+        if any(domain in parsed.netloc for domain in ("discord.gg", "discord.com")):
+            if "oauth2" not in cleaned.lower() and "authorize" not in cleaned.lower():
+                try:
+                    invite = await ctx.bot.fetch_invite(cleaned)
+                    return invite.url
+                except discord.NotFound:
+                    raise commands.BadArgument("That Discord invite link is invalid or has expired.")
+                except discord.HTTPException:
+                    pass  # Allow through if Discord API encounters a transient verification error
+
+        return cleaned
 
 
 class ColorNoneConverter(commands.Converter):
