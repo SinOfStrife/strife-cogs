@@ -43,6 +43,21 @@ def _is_valid_url(url: Any) -> bool:
     return bool(parsed.netloc and parsed.scheme in {"http", "https"} and " " not in url)
 
 
+class PKAddAppView(discord.ui.View):
+    """Single link button letting users choose between personal User App or Server install."""
+
+    def __init__(self, oauth_url: str):
+        super().__init__(timeout=None)
+        self.add_item(
+            discord.ui.Button(
+                label="Add PKLens",
+                emoji="➕",
+                style=discord.ButtonStyle.link,
+                url=oauth_url,
+            )
+        )
+
+
 class PKSwitchView(discord.ui.View):
     """Interactive view allowing 1-click switching between Fronters and System Profile."""
 
@@ -121,7 +136,7 @@ class PKSwitchView(discord.ui.View):
 class PKLens(commands.Cog):
     """Silently check PluralKit system profiles and current fronters server-wide and via User Apps."""
 
-    __version__ = "1.0.4"
+    __version__ = "1.0.6"
     __author__ = ["SinOfStrife"]
     __red_end_user_data_statement__ = (
         "This cog does not store data. Looking up a user sends their "
@@ -132,7 +147,7 @@ class PKLens(commands.Cog):
         super().__init__()
         self.bot = bot
         self.session: Optional[aiohttp.ClientSession] = None
-        self.headers = {"User-Agent": "PKLens/1.0.4 (https://github.com/SinOfStrife/strife-cogs)"}
+        self.headers = {"User-Agent": "PKLens/1.0.6 (https://github.com/SinOfStrife/strife-cogs)"}
 
         # Cache: dict[endpoint, (timestamp, payload)]
         self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -377,33 +392,47 @@ class PKLens(commands.Cog):
         if public and interaction.guild and interaction.channel:
             can_embed = interaction.channel.permissions_for(interaction.guild.me).embed_links
 
+        app_id = interaction.application_id or getattr(self.bot, "application_id", None) or self.bot.user.id
+        oauth_url = f"https://discord.com/oauth2/authorize?client_id={app_id}"
+        view = PKAddAppView(oauth_url)
+
         if can_embed:
             embed = discord.Embed(
                 title="🔍 PKLens",
                 description=(
-                    "A lightweight, privacy-focused PluralKit inspector. View public system profiles "
-                    "and current fronters silently without chat spam.\n\n"
-                    "**Available everywhere:** Works server-wide when added to a server, or as a personal "
-                    "User App installed directly to your account to use in any DM, group chat, or server!"
+                    "A lightweight, privacy-focused tool to inspect public PluralKit system profiles "
+                    "and current fronters without chat spam.\n\n"
+                    "**🌐 Server vs. User App:**\n"
+                    "• **User App (Account-level):** Installs directly to your personal Discord profile. "
+                    "Works **Discord-wide** in DMs, group chats, and external servers where the bot isn't invited!\n"
+                    "• **Server App:** Added to a server so **all members in that server** can use it automatically."
                 ),
                 color=discord.Color.from_str("#6b2598"),
             )
             embed.add_field(
-                name="How to use",
-                value="Use slash commands (`/pkfronters`, `/pkprofile`) or right-click any user (`Apps` ➔ `fronters` or `profile`).",
+                name="How to use (on User Profiles or slash commands)",
+                value=(
+                    "• 🖥️ **Desktop:** Right-click user profile ➔ `Apps` (or use `/pkfronters` / `/pkprofile`).\n"
+                    "• 📱 **Mobile:** Tap user profile ➔ scroll to `Apps` (or use `/pkfronters` / `/pkprofile`)."
+                ),
                 inline=False,
             )
             embed.set_footer(text="All lookups are 100% private and ephemeral by default.")
-            await interaction.response.send_message(embed=embed, ephemeral=not public)
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=not public)
         else:
             fallback = (
                 "**🔍 PKLens**\n"
-                "A lightweight, privacy-focused tool to view public PluralKit profiles.\n"
-                "Works server-wide and as a personal User App across Discord!\n\n"
-                "Use `/pkfronters`, `/pkprofile`, or right-click any user (`Apps` ➔ `fronters`).\n"
-                "All lookups are 100% private and ephemeral by default."
+                "A privacy-focused tool to view public PluralKit profiles silently.\n\n"
+                "**🌐 Server vs. User App:**\n"
+                "• **User App:** Installs to your personal account to use **Discord-wide** across DMs and external servers.\n"
+                "• **Server:** Adds the bot to a server for all members to use.\n\n"
+                "**How to use:**\n"
+                "• 🖥️ Desktop: Right-click user profile ➔ `Apps` (or `/pkfronters` / `/pkprofile`).\n"
+                "• 📱 Mobile: Tap user profile ➔ `Apps` (or `/pkfronters` / `/pkprofile`).\n\n"
+                f"**Add PKLens:** <{oauth_url}>\n"
+                "*(All lookups are private and ephemeral by default)*"
             )
-            await interaction.response.send_message(fallback, ephemeral=not public)
+            await interaction.response.send_message(fallback, view=view, ephemeral=not public)
 
     @app_commands.command(
         name="pkfronters",
