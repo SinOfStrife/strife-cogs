@@ -3,7 +3,7 @@
     "name": "PKLens",
     "short": "Silently check PluralKit profiles & fronters with 1-click menus. Works server-wide and as a personal User App!",
     "description": "A lightweight, privacy-focused PluralKit inspector for Discord. View public system profiles and current fronters without chat spam—all lookups are private and ephemeral. Works server-wide for everyone when added to a server, or as an account-level User App to inspect systems anywhere across DMs, group chats, and external servers!",
-    "install_msg": "Thanks for installing PKLens! Use slash commands (`/pkfronters`, `/pkprofile`) or right-click any user (`Apps` ➔ `fronters` or `profile`) to silently view system info without chat spam. Works server-wide for all members, and can also be installed to your personal Discord profile to use anywhere across Discord!",
+    "install_msg": "Thanks for installing PKLens! Use slash commands (`/pkfronters`, `/pkprofile`) or right-click any user profile (`Apps` ➔ `fronters` or `profile`) to view system info silently. Works server-wide, or install it to your personal profile to use across Discord!",
     "tags": ["pluralkit", "utility", "accessibility", "privacy", "user-apps"],
     "min_bot_version": "3.5.24",
     "hidden": false,
