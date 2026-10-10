@@ -1,10 +1,13 @@
 {
     "author": ["SinOfStrife"],
-    "install_msg": "Thanks for installing PKLens! Use the /pklens slash command for info, or right-click users to check PluralKit profiles and fronters. Note: This cog interacts with an external web service (api.pluralkit.me).",
     "name": "PKLens",
-    "short": "A privacy-focused PluralKit inspector for Discord context menus and slash commands.",
-    "description": "View public PluralKit system profiles and current fronters using user-installed context menus and commands.",
-    "tags": ["pluralkit", "utility", "privacy"],
+    "short": "Silently check PluralKit profiles & fronters with 1-click menus. Works server-wide and as a personal User App!",
+    "description": "A lightweight, privacy-focused PluralKit inspector for Discord. View public system profiles and current fronters without chat spam—all lookups are private and ephemeral. Works server-wide for everyone when added to a server, or as an account-level User App to inspect systems anywhere across DMs, group chats, and external servers!",
+    "install_msg": "Thanks for installing PKLens! Use slash commands (`/pkfronters`, `/pkprofile`) or right-click any user (`Apps` ➔ `fronters` or `profile`) to silently view system info without chat spam. Works server-wide for all members, and can also be installed to your personal Discord profile to use anywhere across Discord!",
+    "tags": ["pluralkit", "utility", "accessibility", "privacy", "user-apps"],
     "min_bot_version": "3.5.24",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
     "end_user_data_statement": "This cog does not store data. Looking up a user sends their Discord user ID to the PluralKit API at api.pluralkit.me."
 }
