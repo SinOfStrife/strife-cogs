@@ -43,10 +43,85 @@ def _is_valid_url(url: Any) -> bool:
     return bool(parsed.netloc and parsed.scheme in {"http", "https"} and " " not in url)
 
 
-class PKLens(commands.Cog):
-    """A privacy-focused PluralKit inspector for Discord Context Menus and Slash Commands."""
+class PKSwitchView(discord.ui.View):
+    """Interactive view allowing 1-click switching between Fronters and System Profile."""
 
-    __version__ = "1.0.2"
+    def __init__(
+        self,
+        cog: PKLens,
+        invoker_id: int,
+        target_user: discord.User | discord.Member,
+        current_view: Literal["fronters", "profile"],
+    ):
+        super().__init__(timeout=120.0)
+        self.cog = cog
+        self.invoker_id = invoker_id
+        self.target_user = target_user
+        self.current_view = current_view
+        self._update_button()
+
+    def _update_button(self) -> None:
+        self.clear_items()
+        if self.current_view == "fronters":
+            btn = discord.ui.Button(
+                label="View System Profile",
+                emoji="👤",
+                style=discord.ButtonStyle.secondary,
+                custom_id="pk_switch_profile",
+            )
+            btn.callback = self._on_switch_profile
+            self.add_item(btn)
+        else:
+            btn = discord.ui.Button(
+                label="View Current Fronters",
+                emoji="🟢",
+                style=discord.ButtonStyle.secondary,
+                custom_id="pk_switch_fronters",
+            )
+            btn.callback = self._on_switch_fronters
+            self.add_item(btn)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.invoker_id:
+            await interaction.response.send_message(
+                "❌ Only the person who ran this lookup can use this button.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    async def _on_switch_profile(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+        embed, error_kind = await self.cog._build_profile_embed(self.target_user)
+        if embed:
+            self.current_view = "profile"
+            self._update_button()
+            await self.cog._safe_send_embed(interaction, embed, view=self, is_edit=True)
+        else:
+            await interaction.followup.send(
+                f"Could not load system profile ({error_kind or 'not found'}).", ephemeral=True
+            )
+
+    async def _on_switch_fronters(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+        embed, error_kind = await self.cog._build_fronters_embed(self.target_user)
+        if embed:
+            self.current_view = "fronters"
+            self._update_button()
+            await self.cog._safe_send_embed(interaction, embed, view=self, is_edit=True)
+        else:
+            await interaction.followup.send(
+                f"Could not load fronters ({error_kind or 'not found'}).", ephemeral=True
+            )
+
+    async def on_timeout(self) -> None:
+        self.stop()
+
+
+class PKLens(commands.Cog):
+    """Silently check PluralKit system profiles and current fronters server-wide and via User Apps."""
+
+    __version__ = "1.0.4"
     __author__ = ["SinOfStrife"]
     __red_end_user_data_statement__ = (
         "This cog does not store data. Looking up a user sends their "
@@ -57,13 +132,13 @@ class PKLens(commands.Cog):
         super().__init__()
         self.bot = bot
         self.session: Optional[aiohttp.ClientSession] = None
-        self.headers = {"User-Agent": "PKLens/1.0.2 (https://github.com/SinOfStrife/strife-cogs)"}
+        self.headers = {"User-Agent": "PKLens/1.0.4 (https://github.com/SinOfStrife/strife-cogs)"}
 
         # Cache: dict[endpoint, (timestamp, payload)]
         self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._cache_ttl = 60.0
 
-        # Context Menus
+        # Context Menus (Server & User App Contexts)
         self.check_fronters_menu = app_commands.ContextMenu(
             name="fronters",
             callback=self.check_fronter_callback,
@@ -116,7 +191,7 @@ class PKLens(commands.Cog):
         return
 
     def _save_to_cache(self, endpoint: str, payload: dict[str, Any], now: float) -> None:
-        """Saves data to cache and removes oldest entries if cache exceeds limit."""
+        """Saves data to cache and evicts oldest entry if cache exceeds limit."""
         if len(self._cache) >= _MAX_CACHE_ITEMS:
             oldest = min(self._cache.keys(), key=lambda k: self._cache[k][0])
             self._cache.pop(oldest, None)
@@ -152,14 +227,26 @@ class PKLens(commands.Cog):
         self._save_to_cache(endpoint, payload, now)
         return payload
 
-    async def _safe_send_embed(self, interaction: discord.Interaction, embed: discord.Embed) -> None:
-        """Sends embed; strips thumbnail and retries if Discord rejects the image URL."""
+    async def _safe_send_embed(
+        self,
+        interaction: discord.Interaction,
+        embed: discord.Embed,
+        view: Optional[discord.ui.View] = None,
+        is_edit: bool = False,
+    ) -> None:
+        """Sends or edits an embed, cleanly stripping broken thumbnail URLs if Discord rejects them."""
         try:
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            if is_edit:
+                await interaction.edit_original_response(embed=embed, view=view)
+            else:
+                await interaction.followup.send(embed=embed, view=view, ephemeral=True)
         except discord.HTTPException as e:
-            if e.code == 50035 and embed.thumbnail:  # Invalid Form Body (bad URL)
+            if e.code == 50035 and embed.thumbnail:  # Invalid Form Body (bad image URL)
                 embed.set_thumbnail(url=None)
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                if is_edit:
+                    await interaction.edit_original_response(embed=embed, view=view)
+                else:
+                    await interaction.followup.send(embed=embed, view=view, ephemeral=True)
             else:
                 raise
 
@@ -183,16 +270,18 @@ class PKLens(commands.Cog):
         embed = discord.Embed(title="⚠️ Error", description=msg, color=discord.Color.red())
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    async def _reply_fronters(self, interaction: discord.Interaction, user: discord.User | discord.Member) -> None:
+    # --- Embed Builders ---
+
+    async def _build_fronters_embed(
+        self, user: discord.User | discord.Member
+    ) -> Tuple[Optional[discord.Embed], Optional[str]]:
         data = await self.fetch_pk_data(f"/systems/{user.id}/fronters")
         if "error" in data:
-            await self._send_pk_error(interaction, user, data, "fronters")
-            return
+            return None, data.get("error")
 
         fronters = data.get("members") or []
         if not isinstance(fronters, list):
-            await self._send_pk_error(interaction, user, {"error": "api_error"}, "fronters")
-            return
+            return None, "api_error"
 
         if not fronters:
             embed = discord.Embed(
@@ -200,13 +289,21 @@ class PKLens(commands.Cog):
                 description="No system members are currently fronting.",
                 color=discord.Color.dark_grey(),
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
+            return embed, None
 
-        names = [_member_label(m) for m in fronters if isinstance(m, dict)]
+        lines = []
+        for member in fronters:
+            if isinstance(member, dict):
+                label = _member_label(member)
+                pronouns = member.get("pronouns")
+                if pronouns and str(pronouns).strip():
+                    lines.append(f"• **{label}** *({str(pronouns).strip()})*")
+                else:
+                    lines.append(f"• **{label}**")
+
         embed = discord.Embed(
             title=_clip(f"🟢 Current Fronters: {user.name}", _TITLE_LIMIT),
-            description=_clip(", ".join(names) if names else "Unknown", _DESC_LIMIT),
+            description=_clip("\n".join(lines) if lines else "Unknown", _DESC_LIMIT),
             color=discord.Color.green(),
         )
 
@@ -217,13 +314,14 @@ class PKLens(commands.Cog):
                     embed.set_thumbnail(url=avatar)
                     break
 
-        await self._safe_send_embed(interaction, embed)
+        return embed, None
 
-    async def _reply_profile(self, interaction: discord.Interaction, user: discord.User | discord.Member) -> None:
+    async def _build_profile_embed(
+        self, user: discord.User | discord.Member
+    ) -> Tuple[Optional[discord.Embed], Optional[str]]:
         data = await self.fetch_pk_data(f"/systems/{user.id}")
         if "error" in data:
-            await self._send_pk_error(interaction, user, data, "system profile")
-            return
+            return None, data.get("error")
 
         system_name = data.get("name") or user.name
         tag = data.get("tag")
@@ -244,13 +342,31 @@ class PKLens(commands.Cog):
         if _is_valid_url(avatar):
             embed.set_thumbnail(url=avatar)
 
-        await self._safe_send_embed(interaction, embed)
+        return embed, None
 
-    # --- Slash Commands ---
+    # --- Core Response Handlers ---
+
+    async def _reply_fronters(self, interaction: discord.Interaction, user: discord.User | discord.Member) -> None:
+        embed, error = await self._build_fronters_embed(user)
+        if embed:
+            view = PKSwitchView(self, interaction.user.id, user, "fronters")
+            await self._safe_send_embed(interaction, embed, view=view)
+        else:
+            await self._send_pk_error(interaction, user, {"error": error or "api_error"}, "fronters")
+
+    async def _reply_profile(self, interaction: discord.Interaction, user: discord.User | discord.Member) -> None:
+        embed, error = await self._build_profile_embed(user)
+        if embed:
+            view = PKSwitchView(self, interaction.user.id, user, "profile")
+            await self._safe_send_embed(interaction, embed, view=view)
+        else:
+            await self._send_pk_error(interaction, user, {"error": error or "api_error"}, "system profile")
+
+    # --- Commands ---
 
     @app_commands.command(
         name="pklens",
-        description="View info about PKLens.",
+        description="View info about PKLens and how to use it.",
         extras={"red_force_enable": True},
     )
     @app_commands.allowed_installs(guilds=True, users=True)
@@ -264,27 +380,34 @@ class PKLens(commands.Cog):
         if can_embed:
             embed = discord.Embed(
                 title="🔍 PKLens",
-                description="A privacy-focused tool to view public PluralKit system profiles and fronters.",
+                description=(
+                    "A lightweight, privacy-focused PluralKit inspector. View public system profiles "
+                    "and current fronters silently without chat spam.\n\n"
+                    "**Available everywhere:** Works server-wide when added to a server, or as a personal "
+                    "User App installed directly to your account to use in any DM, group chat, or server!"
+                ),
                 color=discord.Color.from_str("#6b2598"),
             )
             embed.add_field(
                 name="How to use",
-                value="Use slash commands or right-click any user (`Apps` ➔ `fronters` or `profile`).",
+                value="Use slash commands (`/pkfronters`, `/pkprofile`) or right-click any user (`Apps` ➔ `fronters` or `profile`).",
                 inline=False,
             )
-            embed.set_footer(text="Lookups are private and ephemeral by default.")
+            embed.set_footer(text="All lookups are 100% private and ephemeral by default.")
             await interaction.response.send_message(embed=embed, ephemeral=not public)
         else:
             fallback = (
                 "**🔍 PKLens**\n"
-                "A privacy-focused tool to view public PluralKit profiles.\n"
-                "Use `/pkfronters` or right-click any user (`Apps` ➔ `fronters`)."
+                "A lightweight, privacy-focused tool to view public PluralKit profiles.\n"
+                "Works server-wide and as a personal User App across Discord!\n\n"
+                "Use `/pkfronters`, `/pkprofile`, or right-click any user (`Apps` ➔ `fronters`).\n"
+                "All lookups are 100% private and ephemeral by default."
             )
             await interaction.response.send_message(fallback, ephemeral=not public)
 
     @app_commands.command(
         name="pkfronters",
-        description="Check who is currently fronting.",
+        description="Silently check who is currently fronting in a PluralKit system.",
         extras={"red_force_enable": True},
     )
     @app_commands.allowed_installs(guilds=True, users=True)
@@ -295,7 +418,7 @@ class PKLens(commands.Cog):
 
     @app_commands.command(
         name="pkprofile",
-        description="View a PluralKit system profile.",
+        description="Silently view a user's public PluralKit system profile.",
         extras={"red_force_enable": True},
     )
     @app_commands.allowed_installs(guilds=True, users=True)
