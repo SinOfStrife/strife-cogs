@@ -5,7 +5,6 @@
     "end_user_data_statement": "This cog does not store end user data.",
     "install_msg": "Thanks for installing AdvancedInvite V2 (Components V2 Edition)! Run `[p]invite set` to configure settings.",
     "author": [
-        "Jojo#7791",
         "SinOfStrife"
     ],
     "required_cogs": {},
