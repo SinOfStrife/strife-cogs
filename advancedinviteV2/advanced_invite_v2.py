@@ -42,9 +42,9 @@ _config_structure: Final[Dict[str, Any]] = {
 
 
 class AdvancedInviteV2(commands.Cog):
-    """An advanced invite cog built using Discord Components V2 layout structures."""
+    """An advanced invite cog built using Discord Components V2 layout structures. Adapted from JojoCogs."""
 
-    __author__: Final[List[str]] = ["Jojo#7791", "SinOfStrife"]
+    __author__: Final[List[str]] = ["SinOfStrife"]
     __version__: Final[str] = "4.5.1"
 
     def __init__(self, bot: Red) -> None:
