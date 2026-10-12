@@ -45,7 +45,7 @@ class AdvancedInviteV2(commands.Cog):
     """An advanced invite cog built using Discord Components V2 layout structures. Adapted from JojoCogs."""
 
     __author__: Final[List[str]] = ["SinOfStrife"]
-    __version__: Final[str] = "4.5.3"
+    __version__: Final[str] = "4.5.4"
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
@@ -258,6 +258,8 @@ class AdvancedInviteV2(commands.Cog):
         description="Get the official invite link for the bot.",
         extras={"red_force_enable": True},
     )
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.allowed_installs(guilds=True, users=True)
     async def slash_invite(self, interaction: discord.Interaction) -> None:
         """Request the bot's invite link through Discord's slash command menu."""
         is_owner = await self.bot.is_owner(interaction.user)
@@ -361,10 +363,12 @@ class AdvancedInviteV2(commands.Cog):
         except (discord.Forbidden, discord.HTTPException) as error:
             log.warning("DM delivery failed for %s (%s): %s. Attempting fallback.", ctx.author, ctx.author.id, error)
 
-            # Fix: Wrap fallback warning correctly inside a dedicated V2 container schema instead of mixing raw root types
+            settings = await self.config.all()
+            accent_color = settings.get("accent_color", 5793266)
+
             warning_container = {
                 "type": 17,
-                "accent_color": 16734296, # Warning reddish/orange accent tone
+                "accent_color": accent_color,
                 "spoiler": False,
                 "components": [
                     {
