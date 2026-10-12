@@ -45,7 +45,7 @@ class AdvancedInviteV2(commands.Cog):
     """An advanced invite cog built using Discord Components V2 layout structures. Adapted from JojoCogs."""
 
     __author__: Final[List[str]] = ["SinOfStrife"]
-    __version__: Final[str] = "4.5.4"
+    __version__: Final[str] = "4.5.6"
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
@@ -272,36 +272,58 @@ class AdvancedInviteV2(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
-
         me = (interaction.guild.me if interaction.guild else None) or self.bot.user
         payload = await self._build_invite_payload(me)
 
+        # Direct response for DM usage (no ephemeral masking)
         if interaction.guild is None:
             try:
-                app_id = interaction.application_id or self.bot.application_id
-                route = Route(
-                    "PATCH",
-                    "/webhooks/{application_id}/{interaction_token}/messages/@original",
-                    application_id=app_id,
-                    interaction_token=interaction.token,
-                )
-                dm_payload = dict(payload)
-                dm_payload["flags"] = 32832
-                await self.bot.http.request(route, json=dm_payload)
+                await interaction.response.send_message(**payload)
             except Exception as error:
                 log.exception("Unexpected error in slash DM invite for %s", interaction.user.id)
-                await interaction.followup.send(f"An error occurred: `{error}`", ephemeral=True)
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(f"An error occurred: `{error}`", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"An error occurred: `{error}`", ephemeral=True)
             return
+
+        await interaction.response.defer(ephemeral=True)
 
         try:
             dm_channel = interaction.user.dm_channel or await interaction.user.create_dm()
             await self._send_raw_v2_payload(dm_channel.id, payload)
-            await interaction.followup.send("📬 I've sent you a DM with the invite!", ephemeral=True)
+
+            settings = await self.config.all()
+            accent_color = settings.get("accent_color", 5793266)
+
+            notification_container = {
+                "type": 17,
+                "accent_color": accent_color,
+                "spoiler": False,
+                "components": [
+                    {
+                        "type": 10,
+                        "content": f"📬 {interaction.user.mention}, I've sent you a DM with the invite!",
+                    }
+                ],
+            }
+            notification_payload = {
+                "components": [notification_container],
+                "flags": 64,
+            }
+
+            app_id = interaction.application_id or self.bot.application_id
+            route = Route(
+                "PATCH",
+                "/webhooks/{application_id}/{interaction_token}/messages/@original",
+                application_id=app_id,
+                interaction_token=interaction.token,
+            )
+            await self.bot.http.request(route, json=notification_payload)
 
         except (discord.Forbidden, discord.HTTPException) as error:
             log.warning(
-                "DM failed for slash user %s (%s): %s. Updating original interaction.",
+                "DM failed for slash user %s (%s): %s. Updating original interaction with fallback.",
                 interaction.user,
                 interaction.user.id,
                 error,
@@ -314,8 +336,31 @@ class AdvancedInviteV2(commands.Cog):
                     application_id=app_id,
                     interaction_token=interaction.token,
                 )
-                fallback_payload = dict(payload)
-                fallback_payload["flags"] = 32832
+                
+                settings = await self.config.all()
+                accent_color = settings.get("accent_color", 5793266)
+
+                warning_container = {
+                    "type": 17,
+                    "accent_color": accent_color,
+                    "spoiler": False,
+                    "components": [
+                        {
+                            "type": 10,
+                            "content": f"⚠️ {interaction.user.mention}, I couldn't send you a DM (your DMs might be closed). Here is the invite:",
+                        },
+                        {
+                            "type": 14,
+                            "divider": True,
+                            "spacing": 1,
+                        }
+                    ] + payload["components"]
+                }
+
+                fallback_payload = {
+                    "components": [warning_container],
+                    "flags": 64,
+                }
                 await self.bot.http.request(route, json=fallback_payload)
             except Exception as patch_err:
                 log.exception("Failed to update original interaction with Components V2 for %s", interaction.user.id)
