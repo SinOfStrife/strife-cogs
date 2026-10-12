@@ -45,7 +45,7 @@ class AdvancedInviteV2(commands.Cog):
     """An advanced invite cog built using Discord Components V2 layout structures. Adapted from JojoCogs."""
 
     __author__: Final[List[str]] = ["SinOfStrife"]
-    __version__: Final[str] = "4.5.6"
+    __version__: Final[str] = "4.5.7"
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
@@ -275,10 +275,21 @@ class AdvancedInviteV2(commands.Cog):
         me = (interaction.guild.me if interaction.guild else None) or self.bot.user
         payload = await self._build_invite_payload(me)
 
-        # Direct response for DM usage (no ephemeral masking)
+        # DM delivery route utilizing raw REST helper to avoid discord.py keyword wrapper limitations
         if interaction.guild is None:
             try:
-                await interaction.response.send_message(**payload)
+                await interaction.response.defer(ephemeral=False)
+                dm_channel = interaction.user.dm_channel or await interaction.user.create_dm()
+                await self._send_raw_v2_payload(dm_channel.id, payload)
+
+                app_id = interaction.application_id or self.bot.application_id
+                route = Route(
+                    "PATCH",
+                    "/webhooks/{application_id}/{interaction_token}/messages/@original",
+                    application_id=app_id,
+                    interaction_token=interaction.token,
+                )
+                await self.bot.http.request(route, json={"content": "📬 Here is your invite!"})
             except Exception as error:
                 log.exception("Unexpected error in slash DM invite for %s", interaction.user.id)
                 if not interaction.response.is_done():
