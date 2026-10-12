@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Literal, Optional
-from urllib.parse import urlparse
+from typing import Any, Literal, Optional, Tuple
 
 import aiohttp
 import discord
@@ -46,7 +45,7 @@ def _is_valid_url(url: Any) -> bool:
 class PKAddAppView(discord.ui.View):
     """Single link button letting users choose between personal User App or Server install."""
 
-    def __init__(self, oauth_url: str):
+    def __init__(self, oauth_url: str) -> None:
         super().__init__(timeout=None)
         self.add_item(
             discord.ui.Button(
@@ -67,7 +66,7 @@ class PKSwitchView(discord.ui.View):
         invoker_id: int,
         target_user: discord.User | discord.Member,
         current_view: Literal["fronters", "profile"],
-    ):
+    ) -> None:
         super().__init__(timeout=120.0)
         self.cog = cog
         self.invoker_id = invoker_id
@@ -136,7 +135,7 @@ class PKSwitchView(discord.ui.View):
 class PKLens(commands.Cog):
     """Silently check PluralKit system profiles and current fronters server-wide and via User Apps."""
 
-    __version__ = "1.0.6"
+    __version__ = "1.0.7"
     __author__ = ["SinOfStrife"]
     __red_end_user_data_statement__ = (
         "This cog does not store data. Looking up a user sends their "
@@ -147,22 +146,22 @@ class PKLens(commands.Cog):
         super().__init__()
         self.bot = bot
         self.session: Optional[aiohttp.ClientSession] = None
-        self.headers = {"User-Agent": "PKLens/1.0.6 (https://github.com/SinOfStrife/strife-cogs)"}
+        self.headers = {"User-Agent": "PKLens/1.0.7 (https://github.com/SinOfStrife/strife-cogs)"}
 
         # Cache: dict[endpoint, (timestamp, payload)]
         self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._cache_ttl = 60.0
 
-        # Context Menus with capitalized display names
+        # Context Menus (Server & User App Contexts)
         self.check_fronters_menu = app_commands.ContextMenu(
-            name="Fronter",
+            name="fronters",
             callback=self.check_fronter_callback,
             allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
             allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
             extras={"red_force_enable": True},
         )
         self.view_profile_menu = app_commands.ContextMenu(
-            name="Profile",
+            name="profile",
             callback=self.view_profile_callback,
             allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
             allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
@@ -191,8 +190,11 @@ class PKLens(commands.Cog):
 
     def _drop_menus(self) -> None:
         for menu in (self.check_fronters_menu, self.view_profile_menu):
-            if self.bot.tree.get_command(menu.name, type=menu.type) is not None:
-                self.bot.tree.remove_command(menu.name, type=menu.type)
+            try:
+                if self.bot.tree.get_command(menu.name, type=menu.type) is not None:
+                    self.bot.tree.remove_command(menu.name, type=menu.type)
+            except Exception:
+                pass
 
     async def red_get_data_for_user(self, *, user_id: int) -> dict[str, Any]:
         return {}
@@ -289,7 +291,7 @@ class PKLens(commands.Cog):
 
     async def _build_fronters_embed(
         self, user: discord.User | discord.Member
-    ) -> tuple[Optional[discord.Embed], Optional[str]]:
+    ) -> Tuple[Optional[discord.Embed], Optional[str]]:
         data = await self.fetch_pk_data(f"/systems/{user.id}/fronters")
         if "error" in data:
             return None, data.get("error")
@@ -333,7 +335,7 @@ class PKLens(commands.Cog):
 
     async def _build_profile_embed(
         self, user: discord.User | discord.Member
-    ) -> tuple[Optional[discord.Embed], Optional[str]]:
+    ) -> Tuple[Optional[discord.Embed], Optional[str]]:
         data = await self.fetch_pk_data(f"/systems/{user.id}")
         if "error" in data:
             return None, data.get("error")
@@ -375,7 +377,7 @@ class PKLens(commands.Cog):
             view = PKSwitchView(self, interaction.user.id, user, "profile")
             await self._safe_send_embed(interaction, embed, view=view)
         else:
-            await self._send_pk_error(interaction, user, {"error": error or "api_error"}, "system profile")
+            await self._send_pk_error(interaction, user, {"error": error or 'api_error'}, "system profile")
 
     # --- Commands ---
 
