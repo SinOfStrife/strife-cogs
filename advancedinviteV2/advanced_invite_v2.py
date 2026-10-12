@@ -1,6 +1,8 @@
 # Copyright (c) 2021-2026 Jojo#7791, SinOfStrife and Contributors
 # Licensed under the MIT License
 
+from __future__ import annotations
+
 import logging
 from typing import Any, Dict, Final, List, Optional, Union
 from urllib.parse import urlparse
@@ -45,7 +47,7 @@ class AdvancedInviteV2(commands.Cog):
     """An advanced invite cog built using Discord Components V2 layout structures. Adapted from JojoCogs."""
 
     __author__: Final[List[str]] = ["SinOfStrife"]
-    __version__: Final[str] = "4.5.13"
+    __version__: Final[str] = "4.5.14"
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
@@ -94,7 +96,7 @@ class AdvancedInviteV2(commands.Cog):
         guild_count_str: str,
         user_count_str: str,
     ) -> Optional[str]:
-        """Replace all configured placeholders in any given string template with safe text sanitization."""
+        """Replace all configured placeholders in any given string template."""
         if not template:
             return template
 
@@ -117,22 +119,25 @@ class AdvancedInviteV2(commands.Cog):
         return result
 
     async def _send_raw_v2_payload(self, channel_id: int, payload: Dict[str, Any]) -> None:
-        """Send a Components V2 payload directly through Discord's REST route with deep structural validation."""
-        if not isinstance(payload, dict) or "components" not in payload:
-            raise ValueError("Invalid Components V2 payload structure supplied.")
-
-        components = payload.get("components", [])
-        if not isinstance(components, list) or not components:
-            raise ValueError("Components V2 payload must contain a non-empty components list.")
-
-        for container in components:
-            if not isinstance(container, dict) or container.get("type") != 17:
-                raise ValueError("Root level components must conform to container type 17 specification.")
-            if "components" not in container or not isinstance(container["components"], list):
-                raise ValueError("Container type 17 must contain a valid nested components list.")
-
+        """Send a Components V2 payload directly to a Discord channel via REST."""
         route = Route("POST", "/channels/{channel_id}/messages", channel_id=channel_id)
         await self.bot.http.request(route, json=payload)
+
+    async def _send_interaction_payload(
+        self, interaction: discord.Interaction, payload: Dict[str, Any], ephemeral: bool = False
+    ) -> None:
+        """Edit or fulfill an interaction with a Components V2 payload via REST."""
+        app_id = interaction.application_id or self.bot.application_id
+        route = Route(
+            "PATCH",
+            "/webhooks/{application_id}/{interaction_token}/messages/@original",
+            application_id=app_id,
+            interaction_token=interaction.token,
+        )
+        data = dict(payload)
+        if ephemeral:
+            data["flags"] = data.get("flags", 0) | 64
+        await self.bot.http.request(route, json=data)
 
     async def _build_invite_payload(self, me: Union[discord.ClientUser, discord.Member]) -> Dict[str, Any]:
         """Construct the Components V2 JSON message payload according to Discord specifications."""
@@ -275,80 +280,31 @@ class AdvancedInviteV2(commands.Cog):
         me = (interaction.guild.me if interaction.guild else None) or self.bot.user
         payload = await self._build_invite_payload(me)
 
-        # DM execution (exactly matches original logic: sends to DMs, sends notification container)
+        # DM Execution: respond directly in DMs with the Components V2 card
         if interaction.guild is None:
+            await interaction.response.defer(ephemeral=False)
             try:
-                await interaction.response.defer(ephemeral=False)
-                dm_channel = interaction.user.dm_channel or await interaction.user.create_dm()
-                await self._send_raw_v2_payload(dm_channel.id, payload)
-                
-                app_id = interaction.application_id or self.bot.application_id
-                route = Route(
-                    "PATCH",
-                    "/webhooks/{application_id}/{interaction_token}/messages/@original",
-                    application_id=app_id,
-                    interaction_token=interaction.token,
-                )
-                await self.bot.http.request(route, json={"components": []})
+                await self._send_interaction_payload(interaction, payload, ephemeral=False)
             except Exception as error:
-                log.exception("Unexpected error in slash DM invite for %s", interaction.user.id)
-                if not interaction.response.is_done():
-                    await interaction.response.send_message(f"An error occurred: `{error}`", ephemeral=True)
-                else:
-                    await interaction.followup.send(f"An error occurred: `{error}`", ephemeral=True)
+                log.exception("Error delivering slash invite in DMs for %s", interaction.user.id)
+                await interaction.followup.send(f"An error occurred: `{error}`", ephemeral=True)
             return
 
-        # Guild execution (restores original logic: sends to DMs, shows "I've sent you a DM" notification container, falls back if DMs closed)
+        # Guild Execution: send invite to DM, reply with ephemeral confirmation
         await interaction.response.defer(ephemeral=True)
 
         try:
             dm_channel = interaction.user.dm_channel or await interaction.user.create_dm()
             await self._send_raw_v2_payload(dm_channel.id, payload)
-
-            settings = await self.config.all()
-            accent_color = settings.get("accent_color", 5793266)
-
-            notification_container = {
-                "type": 17,
-                "accent_color": accent_color,
-                "spoiler": False,
-                "components": [
-                    {
-                        "type": 10,
-                        "content": f"📬 {interaction.user.mention}, I've sent you a DM with the invite!",
-                    }
-                ],
-            }
-            notification_payload = {
-                "components": [notification_container],
-                "flags": 64,
-            }
-
-            app_id = interaction.application_id or self.bot.application_id
-            route = Route(
-                "PATCH",
-                "/webhooks/{application_id}/{interaction_token}/messages/@original",
-                application_id=app_id,
-                interaction_token=interaction.token,
+            await interaction.followup.send(
+                f"📬 {interaction.user.mention}, I've sent you a DM with the invite!",
+                ephemeral=True,
             )
-            await self.bot.http.request(route, json=notification_payload)
 
-        except (discord.Forbidden, discord.HTTPException) as error:
-            log.warning(
-                "DM failed for slash user %s (%s): %s. Updating original interaction with fallback.",
-                interaction.user,
-                interaction.user.id,
-                error,
-            )
+        except (discord.Forbidden, discord.HTTPException):
+            # User DMs are closed: fall back to delivering the invite ephemerally in the channel
+            log.info("DM delivery failed for %s (%s). Providing ephemeral channel fallback.", interaction.user, interaction.user.id)
             try:
-                app_id = interaction.application_id or self.bot.application_id
-                route = Route(
-                    "PATCH",
-                    "/webhooks/{application_id}/{interaction_token}/messages/@original",
-                    application_id=app_id,
-                    interaction_token=interaction.token,
-                )
-                
                 settings = await self.config.all()
                 accent_color = settings.get("accent_color", 5793266)
 
@@ -365,19 +321,19 @@ class AdvancedInviteV2(commands.Cog):
                             "type": 14,
                             "divider": True,
                             "spacing": 1,
-                        }
-                    ] + payload["components"]
+                        },
+                    ] + payload["components"],
                 }
 
                 fallback_payload = {
                     "components": [warning_container],
                     "flags": 64,
                 }
-                await self.bot.http.request(route, json=fallback_payload)
+                await self._send_interaction_payload(interaction, fallback_payload, ephemeral=True)
             except Exception as patch_err:
-                log.exception("Failed to update original interaction with Components V2 for %s", interaction.user.id)
+                log.exception("Failed to send ephemeral fallback to %s", interaction.user.id)
                 await interaction.followup.send(
-                    f"Failed to deliver invite layout: `{patch_err}`",
+                    f"Failed to deliver invite: `{patch_err}`",
                     ephemeral=True,
                 )
 
@@ -399,14 +355,16 @@ class AdvancedInviteV2(commands.Cog):
         me = ctx.me or self.bot.user
         payload = await self._build_invite_payload(me)
 
+        # DM Execution: post directly into DMs
         if ctx.guild is None:
             try:
                 await self._send_raw_v2_payload(ctx.channel.id, payload)
             except Exception as error:
-                log.exception("Unexpected error in DM invite command for user %s", ctx.author.id)
+                log.exception("Error in DM prefix invite for user %s", ctx.author.id)
                 await ctx.send(f"Failed to send invite: `{error}`")
             return
 
+        # Guild Execution: send to DMs, notify in channel
         try:
             dm_channel = ctx.author.dm_channel or await ctx.author.create_dm()
             await self._send_raw_v2_payload(dm_channel.id, payload)
@@ -415,11 +373,11 @@ class AdvancedInviteV2(commands.Cog):
             try:
                 await msg.delete(delay=10)
             except Exception:
-                log.debug("Failed to delete notification message after DM delivery.")
+                pass
 
-        except (discord.Forbidden, discord.HTTPException) as error:
-            log.warning("DM delivery failed for %s (%s): %s. Attempting fallback.", ctx.author, ctx.author.id, error)
-
+        except (discord.Forbidden, discord.HTTPException):
+            # User DMs are closed: post in channel fallback
+            log.info("DM delivery failed for %s (%s). Falling back to channel message.", ctx.author, ctx.author.id)
             settings = await self.config.all()
             accent_color = settings.get("accent_color", 5793266)
 
@@ -436,8 +394,8 @@ class AdvancedInviteV2(commands.Cog):
                         "type": 14,
                         "divider": True,
                         "spacing": 1,
-                    }
-                ] + payload["components"]
+                    },
+                ] + payload["components"],
             }
 
             fallback_payload = {
@@ -449,12 +407,15 @@ class AdvancedInviteV2(commands.Cog):
                 await self._send_raw_v2_payload(ctx.channel.id, fallback_payload)
             except Exception as channel_err:
                 log.exception("Failed to send invite fallback in channel %s", ctx.channel.id)
-                await ctx.send(f"Failed to deliver invite layout: `{channel_err}`")
+                await ctx.send(f"Failed to deliver invite: `{channel_err}`")
 
         except Exception as error:
             log.exception("Unexpected error in invite command for user %s", ctx.author.id)
             await ctx.send(f"Failed to send invite: `{error}`")
 
+    # ==========================================
+    # CONFIGURATION COMMANDS
+    # ==========================================
     @invite.group(name="settings", aliases=("set",), invoke_without_command=True)
     @commands.is_owner()
     async def invite_settings(self, ctx: commands.Context) -> None:
