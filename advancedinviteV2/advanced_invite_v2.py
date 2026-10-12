@@ -45,7 +45,7 @@ class AdvancedInviteV2(commands.Cog):
     """An advanced invite cog built using Discord Components V2 layout structures. Adapted from JojoCogs."""
 
     __author__: Final[List[str]] = ["SinOfStrife"]
-    __version__: Final[str] = "4.5.1"
+    __version__: Final[str] = "4.5.3"
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
@@ -70,7 +70,10 @@ class AdvancedInviteV2(commands.Cog):
     def cog_unload(self) -> None:
         self.bot.remove_command("invite")
         if self._invite_command:
-            self.bot.add_command(self._invite_command)
+            try:
+                self.bot.add_command(self._invite_command)
+            except Exception:
+                log.exception("Failed to restore original 'invite' command on unload.")
 
     @staticmethod
     def _humanize_list(data: List[str]) -> str:
@@ -91,7 +94,7 @@ class AdvancedInviteV2(commands.Cog):
         guild_count_str: str,
         user_count_str: str,
     ) -> Optional[str]:
-        """Replace all configured placeholders in any given string template."""
+        """Replace all configured placeholders in any given string template with safe text sanitization."""
         if not template:
             return template
 
@@ -114,7 +117,20 @@ class AdvancedInviteV2(commands.Cog):
         return result
 
     async def _send_raw_v2_payload(self, channel_id: int, payload: Dict[str, Any]) -> None:
-        """Send a Components V2 payload directly through Discord's REST route."""
+        """Send a Components V2 payload directly through Discord's REST route with deep structural validation."""
+        if not isinstance(payload, dict) or "components" not in payload:
+            raise ValueError("Invalid Components V2 payload structure supplied.")
+
+        components = payload.get("components", [])
+        if not isinstance(components, list) or not components:
+            raise ValueError("Components V2 payload must contain a non-empty components list.")
+
+        for container in components:
+            if not isinstance(container, dict) or container.get("type") != 17:
+                raise ValueError("Root level components must conform to container type 17 specification.")
+            if "components" not in container or not isinstance(container["components"], list):
+                raise ValueError("Container type 17 must contain a valid nested components list.")
+
         route = Route("POST", "/channels/{channel_id}/messages", channel_id=channel_id)
         await self.bot.http.request(route, json=payload)
 
@@ -340,20 +356,31 @@ class AdvancedInviteV2(commands.Cog):
             try:
                 await msg.delete(delay=10)
             except Exception:
-                pass
+                log.debug("Failed to delete notification message after DM delivery.")
 
         except (discord.Forbidden, discord.HTTPException) as error:
             log.warning("DM delivery failed for %s (%s): %s. Attempting fallback.", ctx.author, ctx.author.id, error)
 
-            fallback_components = [
-                {
-                    "type": 10,
-                    "content": f"⚠️ {ctx.author.mention}, I couldn't send you a DM (your DMs might be closed). Here is the invite:",
-                }
-            ] + payload["components"]
+            # Fix: Wrap fallback warning correctly inside a dedicated V2 container schema instead of mixing raw root types
+            warning_container = {
+                "type": 17,
+                "accent_color": 16734296, # Warning reddish/orange accent tone
+                "spoiler": False,
+                "components": [
+                    {
+                        "type": 10,
+                        "content": f"⚠️ {ctx.author.mention}, I couldn't send you a DM (your DMs might be closed). Here is the invite:",
+                    },
+                    {
+                        "type": 14,
+                        "divider": True,
+                        "spacing": 1,
+                    }
+                ] + payload["components"]
+            }
 
             fallback_payload = {
-                "components": fallback_components,
+                "components": [warning_container],
                 "flags": 32768,
             }
 
@@ -482,6 +509,9 @@ class AdvancedInviteV2(commands.Cog):
                 await self.config.title.set(title)
                 await ctx.send("The title heading has been reset to default.")
             else:
+                if len(title) > 256:
+                    await ctx.send("The title cannot exceed 256 characters.")
+                    return
                 await self.config.title.set(title)
                 await ctx.send("The title heading has been updated.")
         except Exception as error:
