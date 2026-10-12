@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import Any, Literal, Optional, Tuple
+from urllib.parse import urlparse
 
 import aiohttp
 import discord
@@ -135,7 +136,7 @@ class PKSwitchView(discord.ui.View):
 class PKLens(commands.Cog):
     """Silently check PluralKit system profiles and current fronters server-wide and via User Apps."""
 
-    __version__ = "1.0.7"
+    __version__ = "1.0.8"
     __author__ = ["SinOfStrife"]
     __red_end_user_data_statement__ = (
         "This cog does not store data. Looking up a user sends their "
@@ -146,7 +147,7 @@ class PKLens(commands.Cog):
         super().__init__()
         self.bot = bot
         self.session: Optional[aiohttp.ClientSession] = None
-        self.headers = {"User-Agent": "PKLens/1.0.7 (https://github.com/SinOfStrife/strife-cogs)"}
+        self.headers = {"User-Agent": "PKLens/1.0.8 (https://github.com/SinOfStrife/strife-cogs)"}
 
         # Cache: dict[endpoint, (timestamp, payload)]
         self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -377,7 +378,7 @@ class PKLens(commands.Cog):
             view = PKSwitchView(self, interaction.user.id, user, "profile")
             await self._safe_send_embed(interaction, embed, view=view)
         else:
-            await self._send_pk_error(interaction, user, {"error": error or 'api_error'}, "system profile")
+            await self._send_pk_error(interaction, user, {"error": error or "api_error"}, "system profile")
 
     # --- Commands ---
 
