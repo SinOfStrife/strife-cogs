@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import functools
 import logging
 from typing import Any, Literal, Optional
 
@@ -14,7 +13,7 @@ log = logging.getLogger("red.strifecogs.nopings")
 class NoPings(commands.Cog):
     """Prevents the bot from sending notification pings when replying to commands."""
 
-    __version__ = "1.1.2"
+    __version__ = "2.1.2"
     __author__ = ["SinOfStrife"]
     __red_end_user_data_statement__ = (
         "This cog stores Discord User IDs and Guild IDs to remember notification "
@@ -27,21 +26,15 @@ class NoPings(commands.Cog):
             self, identifier=948172635481, force_registration=True
         )
 
-        # Opt-In default: Bot pings normally unless enabled
         self.config.register_user(nopings=False)
         self.config.register_guild(all_silent=False, protected_users=[])
 
-        # Fast in-memory caches (zero disk I/O on messages)
         self._user_cache: set[int] = set()
         self._guild_cache: set[int] = set()
         self._guild_protected: dict[int, set[int]] = {}
 
-        self._original_context_send = getattr(
-            commands.Context, "_nopings_original_send", commands.Context.send
-        )
-
     async def cog_load(self) -> None:
-        """Pre-populate caches and safely patch Context.send on load."""
+        """Pre-populate memory caches from config on load[span_5](start_span)[span_5](end_span)."""
         user_data = await self.config.all_users()
         self._user_cache = {
             user_id for user_id, data in user_data.items() if data.get("nopings", False)
@@ -56,69 +49,48 @@ class NoPings(commands.Cog):
             for guild_id, data in guild_data.items()
         }
 
-        self._patch_context_send()
-
     def cog_unload(self) -> None:
-        """Synchronously restore Context.send when unloaded."""
-        commands.Context.send = self._original_context_send
-        if hasattr(commands.Context, "_nopings_original_send"):
-            delattr(commands.Context, "_nopings_original_send")
-        log.info("NoPings unloaded: Restored default Context.send pipeline.")
+        pass
 
-    def _patch_context_send(self) -> None:
-        """Intercept Context.send to handle reply mentions."""
-        commands.Context._nopings_original_send = self._original_context_send
-        original = self._original_context_send
-        cog = self
+    @commands.Cog.listener()
+    async def on_command_invoke(self, ctx: commands.Context) -> None:
+        """Intercept command context to ensure reply pings are suppressed when applicable[span_6](start_span)[span_6](end_span)."""
+        author_id = ctx.author.id
+        guild_id = ctx.guild.id if ctx.guild else None
 
-        @functools.wraps(original)
-        async def patched_send(ctx_self: commands.Context, *args: Any, **kwargs: Any) -> discord.Message:
-            # Strictly check if this message is a reply
-            has_reference = bool(kwargs.get("reference"))
+        silence_user = author_id in self._user_cache
+        silence_guild = guild_id is not None and guild_id in self._guild_cache
+        silence_protected = (
+            guild_id is not None
+            and author_id in self._guild_protected.get(guild_id, set())
+        )
 
-            if has_reference:
-                author_id = ctx_self.author.id
-                guild_id = ctx_self.guild.id if ctx_self.guild else None
+        if silence_user or silence_guild or silence_protected:
+            original_send = ctx.send
 
-                silence_user = author_id in cog._user_cache
-                silence_guild = guild_id is not None and guild_id in cog._guild_cache
-                silence_protected = (
-                    guild_id is not None
-                    and author_id in cog._guild_protected.get(guild_id, set())
-                )
-
-                if silence_user or silence_guild or silence_protected:
+            async def wrapped_send(*args: Any, **kwargs: Any) -> discord.Message:
+                if "reference" in kwargs or ctx.message.reference:
                     if "mention_author" not in kwargs:
                         kwargs["mention_author"] = False
-
-                    # Clone AllowedMentions to avoid mutating shared objects
+                    
                     if "allowed_mentions" in kwargs and kwargs["allowed_mentions"] is not None:
-                        existing = kwargs["allowed_mentions"]
+                        am = kwargs["allowed_mentions"]
+                        if isinstance(am, discord.AllowedMentions):
+                            am.replied_user = False
+                    else:
+                        base = getattr(self.bot, "allowed_mentions", discord.AllowedMentions.default())
                         kwargs["allowed_mentions"] = discord.AllowedMentions(
-                            everyone=existing.everyone,
-                            roles=existing.roles,
-                            users=existing.users,
+                            everyone=base.everyone,
+                            roles=base.roles,
+                            users=base.users,
                             replied_user=False,
                         )
-                    elif "allowed_mentions" not in kwargs:
-                        base_allowed = getattr(
-                            cog.bot, "allowed_mentions", discord.AllowedMentions.default()
-                        )
-                        kwargs["allowed_mentions"] = discord.AllowedMentions(
-                            everyone=base_allowed.everyone,
-                            roles=base_allowed.roles,
-                            users=base_allowed.users,
-                            replied_user=False,
-                        )
+                return await original_send(*args, **kwargs)
 
-            return await original(ctx_self, *args, **kwargs)
-
-        commands.Context.send = patched_send
-
-    # --- GDPR / End-User Data Handlers ---
+            ctx.send = wrapped_send
 
     async def red_get_data_for_user(self, *, user_id: int) -> dict[str, Any]:
-        """Return stored data for a user."""
+        """Return stored data for a user[span_7](start_span)[span_7](end_span)."""
         is_opted_in = user_id in self._user_cache
         protected_guilds = [
             str(guild_id)
@@ -136,7 +108,7 @@ class NoPings(commands.Cog):
         requester: Literal["discord_deleted_user", "owner", "user", "user_strict"],
         user_id: int,
     ) -> None:
-        """Delete stored user data on request across user and guild records."""
+        """Delete stored user data on request across user and guild records[span_8](start_span)[span_8](end_span)."""
         await self.config.user_from_id(user_id).clear()
         self._user_cache.discard(user_id)
 
@@ -147,11 +119,9 @@ class NoPings(commands.Cog):
                     if user_id in p_users:
                         p_users.remove(user_id)
 
-    # --- User Commands ---
-
     @commands.group(name="noping", aliases=["nopings"], invoke_without_command=True)
     async def noping(self, ctx: commands.Context) -> None:
-        """Toggle whether the bot pings you when it replies to your commands."""
+        """Toggle whether the bot pings you when it replies to your commands[span_9](start_span)[span_9](end_span)."""
         current = ctx.author.id in self._user_cache
         new_state = not current
 
@@ -167,7 +137,7 @@ class NoPings(commands.Cog):
     @noping.command(name="test")
     @commands.guild_only()
     async def noping_test(self, ctx: commands.Context, member: Optional[discord.Member] = None) -> None:
-        """Check if you or another member are currently silenced in this server."""
+        """Check if you or another member are currently silenced in this server[span_10](start_span)[span_10](end_span)."""
         target = member or ctx.author
         guild_id = ctx.guild.id
 
@@ -194,18 +164,16 @@ class NoPings(commands.Cog):
                 f"🔔 **{target.display_name}** will be pinged normally on replies."
             )
 
-    # --- Admin Settings Group ---
-
     @noping.group(name="set", aliases=["settings"], invoke_without_command=True)
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
     async def noping_set(self, ctx: commands.Context) -> None:
-        """Manage NoPings settings for this server."""
+        """Manage NoPings settings for this server[span_11](start_span)[span_11](end_span)."""
         await ctx.send_help()
 
     @noping_set.command(name="showsettings", aliases=["show"])
     async def noping_showsettings(self, ctx: commands.Context) -> None:
-        """Display active NoPings settings for this server."""
+        """Display active NoPings settings for this server[span_12](start_span)[span_12](end_span)."""
         guild_id = ctx.guild.id
         all_silent = guild_id in self._guild_cache
         protected_ids = self._guild_protected.get(guild_id, set())
@@ -213,7 +181,6 @@ class NoPings(commands.Cog):
         if protected_ids:
             mentions = [f"<@{uid}>" for uid in protected_ids]
             members_text = ", ".join(mentions)
-            # Guard against Discord's 1,024-character embed limit
             if len(members_text) > 1000:
                 shown = []
                 current_len = 0
@@ -253,7 +220,7 @@ class NoPings(commands.Cog):
 
     @noping_set.command(name="toggle")
     async def noping_toggle(self, ctx: commands.Context) -> None:
-        """Toggle server-wide silent replies on or off for everyone."""
+        """Toggle server-wide silent replies on or off for everyone[span_13](start_span)[span_13](end_span)."""
         guild_id = ctx.guild.id
         current = guild_id in self._guild_cache
         new_state = not current
@@ -269,7 +236,7 @@ class NoPings(commands.Cog):
 
     @noping_set.command(name="add")
     async def noping_add(self, ctx: commands.Context, member: discord.Member) -> None:
-        """Force-add a member to this server's silent reply list."""
+        """Force-add a member to this server's silent reply list[span_14](start_span)[span_14](end_span)."""
         guild_id = ctx.guild.id
         protected = self._guild_protected.setdefault(guild_id, set())
 
@@ -279,13 +246,14 @@ class NoPings(commands.Cog):
 
         protected.add(member.id)
         async with self.config.guild(ctx.guild).protected_users() as users:
-            users.append(member.id)
+            if member.id not in users:
+                users.append(member.id)
 
         await ctx.send(f"**{member.display_name}** has been force-added to this server's silent reply list.")
 
     @noping_set.command(name="remove")
     async def noping_remove(self, ctx: commands.Context, member: discord.Member) -> None:
-        """Remove a member from this server's force-silenced list."""
+        """Remove a member from this server's force-silenced list[span_15](start_span)[span_15](end_span)."""
         guild_id = ctx.guild.id
         protected = self._guild_protected.get(guild_id, set())
 
@@ -299,3 +267,7 @@ class NoPings(commands.Cog):
                 users.remove(member.id)
 
         await ctx.send(f"**{member.display_name}** has been removed from this server's force-silenced list.")
+
+
+async def setup(bot: Red) -> None:
+    await bot.add_cog(NoPings(bot))
