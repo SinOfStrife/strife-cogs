@@ -153,16 +153,16 @@ class PKLens(commands.Cog):
         self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._cache_ttl = 60.0
 
-        # Context Menus (Server & User App Contexts)
+        # Context Menus with capitalized display names
         self.check_fronters_menu = app_commands.ContextMenu(
-            name="fronters",
+            name="Fronter",
             callback=self.check_fronter_callback,
             allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
             allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
             extras={"red_force_enable": True},
         )
         self.view_profile_menu = app_commands.ContextMenu(
-            name="profile",
+            name="Profile",
             callback=self.view_profile_callback,
             allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
             allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
@@ -289,7 +289,7 @@ class PKLens(commands.Cog):
 
     async def _build_fronters_embed(
         self, user: discord.User | discord.Member
-    ) -> Tuple[Optional[discord.Embed], Optional[str]]:
+    ) -> tuple[Optional[discord.Embed], Optional[str]]:
         data = await self.fetch_pk_data(f"/systems/{user.id}/fronters")
         if "error" in data:
             return None, data.get("error")
@@ -333,7 +333,7 @@ class PKLens(commands.Cog):
 
     async def _build_profile_embed(
         self, user: discord.User | discord.Member
-    ) -> Tuple[Optional[discord.Embed], Optional[str]]:
+    ) -> tuple[Optional[discord.Embed], Optional[str]]:
         data = await self.fetch_pk_data(f"/systems/{user.id}")
         if "error" in data:
             return None, data.get("error")
