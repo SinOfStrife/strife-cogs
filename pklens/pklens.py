@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Literal, Optional, Tuple
+from typing import Any, Callable, Literal, Optional
 from urllib.parse import urlparse
 
 import aiohttp
@@ -41,6 +41,19 @@ def _is_valid_url(url: Any) -> bool:
         return False
     parsed = urlparse(url)
     return bool(parsed.netloc and parsed.scheme in {"http", "https"} and " " not in url)
+
+
+# Backward-compatible decorators for Red < 3.5.24 / discord.py < 2.4
+def _maybe_allowed_installs(**kwargs: Any) -> Callable[[Any], Any]:
+    if hasattr(app_commands, "allowed_installs"):
+        return app_commands.allowed_installs(**kwargs)
+    return lambda func: func
+
+
+def _maybe_allowed_contexts(**kwargs: Any) -> Callable[[Any], Any]:
+    if hasattr(app_commands, "allowed_contexts"):
+        return app_commands.allowed_contexts(**kwargs)
+    return lambda func: func
 
 
 class PKAddAppView(discord.ui.View):
@@ -105,6 +118,15 @@ class PKSwitchView(discord.ui.View):
             return False
         return True
 
+    def _friendly_error(self, error_kind: Optional[str], kind_name: str) -> str:
+        if error_kind == "private":
+            return f"**{self.target_user.display_name}** has set their {kind_name} to **private**."
+        if error_kind == "not_found":
+            return f"**{self.target_user.display_name}** is not registered with PluralKit."
+        if error_kind == "rate_limited":
+            return "PluralKit is currently rate-limited. Please try again in a moment."
+        return f"Could not load {kind_name}."
+
     async def _on_switch_profile(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         embed, error_kind = await self.cog._build_profile_embed(self.target_user)
@@ -113,9 +135,7 @@ class PKSwitchView(discord.ui.View):
             self._update_button()
             await self.cog._safe_send_embed(interaction, embed, view=self, is_edit=True)
         else:
-            await interaction.followup.send(
-                f"Could not load system profile ({error_kind or 'not found'}).", ephemeral=True
-            )
+            await interaction.followup.send(self._friendly_error(error_kind, "system profile"), ephemeral=True)
 
     async def _on_switch_fronters(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
@@ -125,9 +145,7 @@ class PKSwitchView(discord.ui.View):
             self._update_button()
             await self.cog._safe_send_embed(interaction, embed, view=self, is_edit=True)
         else:
-            await interaction.followup.send(
-                f"Could not load fronters ({error_kind or 'not found'}).", ephemeral=True
-            )
+            await interaction.followup.send(self._friendly_error(error_kind, "fronters"), ephemeral=True)
 
     async def on_timeout(self) -> None:
         self.stop()
@@ -136,7 +154,7 @@ class PKSwitchView(discord.ui.View):
 class PKLens(commands.Cog):
     """Silently check PluralKit system profiles and current fronters server-wide and via User Apps."""
 
-    __version__ = "1.0.8"
+    __version__ = "1.0.9"
     __author__ = ["SinOfStrife"]
     __red_end_user_data_statement__ = (
         "This cog does not store data. Looking up a user sends their "
@@ -147,26 +165,27 @@ class PKLens(commands.Cog):
         super().__init__()
         self.bot = bot
         self.session: Optional[aiohttp.ClientSession] = None
-        self.headers = {"User-Agent": "PKLens/1.0.8 (https://github.com/SinOfStrife/strife-cogs)"}
+        self.headers = {"User-Agent": "PKLens/1.0.9 (https://github.com/SinOfStrife/strife-cogs)"}
 
-        # Cache: dict[endpoint, (timestamp, payload)]
         self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._cache_ttl = 60.0
 
-        # Context Menus (Server & User App Contexts)
+        # Dynamic kwargs for backward-compatible User App support
+        menu_kwargs: dict[str, Any] = {"extras": {"red_force_enable": True}}
+        if hasattr(app_commands, "AppInstallationType"):
+            menu_kwargs["allowed_installs"] = app_commands.AppInstallationType(guild=True, user=True)
+        if hasattr(app_commands, "AppCommandContext"):
+            menu_kwargs["allowed_contexts"] = app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True)
+
         self.check_fronters_menu = app_commands.ContextMenu(
-            name="fronters",
+            name="Fronter",
             callback=self.check_fronter_callback,
-            allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
-            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
-            extras={"red_force_enable": True},
+            **menu_kwargs,
         )
         self.view_profile_menu = app_commands.ContextMenu(
-            name="profile",
+            name="Profile",
             callback=self.view_profile_callback,
-            allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
-            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
-            extras={"red_force_enable": True},
+            **menu_kwargs,
         )
 
     async def cog_load(self) -> None:
@@ -292,7 +311,7 @@ class PKLens(commands.Cog):
 
     async def _build_fronters_embed(
         self, user: discord.User | discord.Member
-    ) -> Tuple[Optional[discord.Embed], Optional[str]]:
+    ) -> tuple[Optional[discord.Embed], Optional[str]]:
         data = await self.fetch_pk_data(f"/systems/{user.id}/fronters")
         if "error" in data:
             return None, data.get("error")
@@ -336,7 +355,7 @@ class PKLens(commands.Cog):
 
     async def _build_profile_embed(
         self, user: discord.User | discord.Member
-    ) -> Tuple[Optional[discord.Embed], Optional[str]]:
+    ) -> tuple[Optional[discord.Embed], Optional[str]]:
         data = await self.fetch_pk_data(f"/systems/{user.id}")
         if "error" in data:
             return None, data.get("error")
@@ -387,8 +406,8 @@ class PKLens(commands.Cog):
         description="View info about PKLens and how to use it.",
         extras={"red_force_enable": True},
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @_maybe_allowed_installs(guilds=True, users=True)
+    @_maybe_allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(public="Set to True to share info with the channel (default: False)")
     async def pklens_help(self, interaction: discord.Interaction, public: bool = False) -> None:
         can_embed = True
@@ -442,8 +461,8 @@ class PKLens(commands.Cog):
         description="Silently check who is currently fronting in a PluralKit system.",
         extras={"red_force_enable": True},
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @_maybe_allowed_installs(guilds=True, users=True)
+    @_maybe_allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def pkfronters_slash(self, interaction: discord.Interaction, user: discord.User) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._reply_fronters(interaction, user)
@@ -453,8 +472,8 @@ class PKLens(commands.Cog):
         description="Silently view a user's public PluralKit system profile.",
         extras={"red_force_enable": True},
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @_maybe_allowed_installs(guilds=True, users=True)
+    @_maybe_allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def pkprofile_slash(self, interaction: discord.Interaction, user: discord.User) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._reply_profile(interaction, user)
