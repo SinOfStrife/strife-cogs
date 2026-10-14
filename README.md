@@ -6,6 +6,8 @@
 
 A collection of custom cogs for Red-DiscordBot.
 
+---
+
 ## Installation
 
 To install these cogs, make sure you have the Downloader cog loaded, then run the following commands in your bot:
@@ -34,9 +36,9 @@ To install these cogs, make sure you have the Downloader cog loaded, then run th
 | Cog | Description | Key Commands |
 | :--- | :--- | :--- |
 | **advancedinviteV2** | Sends interactive invite cards using Discord's modern Components V2 layouts, custom buttons, and live server stats. | `[p]invite`, `/invite`<br>`[p]invite set [url\|support\|message\|title\|footer\|color\|thumbnail\|showsettings]` |
-| **Fox** | Fetches and posts random fox images or GIFs from randomfox.ca with plaintext permission fallbacks. | `[p]fox` *(alias: `[p]foxo`)* |
+| **Fox** | Fetches random fox pictures from randomfox.ca paired with interesting fox facts from some-random-api.com. | `[p]fox` *(alias: `[p]foxo`)* |
 | **NoPings** | Prevents notification pings when the bot replies to commands. Includes personal opt-in toggles and server-wide admin controls. | `[p]noping`, `[p]nopings test [member]`<br>`[p]nopings set [toggle\|add\|remove\|showsettings]` |
-| **PKLens** | A privacy-focused PluralKit accessibility tool supporting ephemeral profile and fronter lookups across slash commands and right-click context menus. | `/pklens`, `/pkfronters <user>`, `/pkprofile <user>`<br>Apps (Context Menus): `fronters`, `profile` |
+| **PKLens** | A lightweight, privacy-focused PluralKit inspector. View public system profiles and fronters silently with 1-click view switching. | `/pklens`, `/pkfronters <user>`, `/pkprofile <user>`<br>Apps (Context Menus): `Fronter`, `Profile` |
 
 ---
 
