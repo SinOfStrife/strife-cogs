@@ -29,11 +29,11 @@ A sleek, modern invite command for Red-DiscordBot using Discord's clean Componen
 * `[p]invite` or `/invite` — Get the bot's invite card (sent to DMs).
 
 ### Owner Settings (`[p]invite set`)
-* `[p]invite set url <link>` — Set a custom invite link for the main button.
+* `[p]invite set url <link>` — Set a custom invite link for the main button (will default to your standard one otherwise).
 * `[p]invite set support <link>` — Add a support server or website button.
 * `[p]invite set message <text>` — Customize the body text (supports `{bot_name}`, `{guild_count}`, `{user_count}`).
-* `[p]invite set title <text>` — Change the card title.
+* `[p]invite set title <text>` — Change the embed title.
 * `[p]invite set footer <text>` — Add a custom footer.
-* `[p]invite set color <color>` — Set the card border/accent color.
-* `[p]invite set thumbnail <choice>` — Add a logo or use the bot's avatar.
+* `[p]invite set color <color>` — Set the embed border/accent color.
+* `[p]invite set thumbnail <choice>` — Add a image link or use the bot's avatar with `bot`.
 * `[p]invite set showsettings` — View your current configuration.
