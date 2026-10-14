@@ -8,8 +8,8 @@ PKLens allows you to look up public PluralKit system profiles and current fronte
 
 ## Key Features
 
-* **1-Click View Switching:** Easily toggle back and forth between a system's current fronters and their full profile using interactive buttons.
-* **Inline Pronouns:** Automatically formats co-fronters with their pronouns inline for better accessibility.
+* **1-Click View Switching:** Easily toggle back and forth between a system's current fronters and their full profile using buttons.
+* **Pronouns:** Shows fronters with their pronouns for better accessibility.
 * **Dual Installation (Server & User App):** 
   * Add it to a server so every member can use it automatically.
   * Install it as a personal User App on your Discord account to use it privately across DMs, group chats, and external servers.
