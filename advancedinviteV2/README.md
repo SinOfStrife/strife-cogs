@@ -1,6 +1,6 @@
 # AdvancedInviteV2
 
-A sleek, modern invite command for Red-DiscordBot using Discord's clean Components V2 layout cards.
+A sleek, modern invite command for Red-DiscordBot using Discord's Components V2.
 
 ---
 
