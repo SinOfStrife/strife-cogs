@@ -15,7 +15,7 @@ log = logging.getLogger("red.fox")
 class Fox(commands.Cog):
     """Brings random cute foxes straight to your chat."""
 
-    __version__ = "1.0.1"
+    __version__ = "1.1.0"
     __author__ = ["SinOfStrife"]
     __red_end_user_data_statement__ = (
         "This cog does not persistently store any personal or user data."
@@ -51,13 +51,15 @@ class Fox(commands.Cog):
     @commands.command(name="fox", aliases=["foxo"])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def fox(self, ctx: commands.Context) -> None:
-        """Get a random cute fox image or GIF!"""
-
+        """Get a random cute fox image or GIF with a fun fact!"""
         async with ctx.typing():
             try:
-                image_url, failed = await self._get_fox()
+                (image_url, failed), fact = await asyncio.gather(
+                    self._get_fox(),
+                    self._get_fox_fact(),
+                )
             except Exception:
-                log.exception("Unexpected error while fetching a fox.")
+                log.exception("Unexpected error while fetching fox data.")
                 await ctx.send("❌ An unexpected error occurred while fetching a fox.")
                 return
 
@@ -68,10 +70,11 @@ class Fox(commands.Cog):
                 await ctx.send("❌ Could not find a fox right now. Try again later!")
                 return
 
-            # QA Requirement: Handle missing Embed Links permission gracefully
             can_embed = ctx.channel.permissions_for(ctx.me).embed_links
             if can_embed:
                 embed = discord.Embed(title="🦊 Random Fox", color=await ctx.embed_color())
+                if fact:
+                    embed.description = f"*Did you know? {fact}*"
                 embed.set_image(url=image_url)
                 embed.set_footer(
                     text=f"Requested by {ctx.author.display_name}",
@@ -79,7 +82,10 @@ class Fox(commands.Cog):
                 )
                 await ctx.send(embed=embed)
             else:
-                await ctx.send(f"🦊 **Random Fox:** {image_url}")
+                msg = f"🦊 **Random Fox:** {image_url}"
+                if fact:
+                    msg += f"\n\n*Did you know? {fact}*"
+                await ctx.send(msg)
 
     async def _get_fox(self) -> Tuple[Optional[str], bool]:
         """Return (image URL, failed). failed is True when the request itself did not succeed."""
@@ -100,3 +106,20 @@ class Fox(commands.Cog):
         if not isinstance(image, str) or not image:
             return None, False
         return image, False
+
+    async def _get_fox_fact(self) -> Optional[str]:
+        """Fetch a random fox fact. Fails silently returning None if the API is down or slow."""
+        if self.session is None or self.session.closed:
+            return None
+
+        try:
+            async with self.session.get("https://some-random-api.com/animal/fox") as response:
+                if response.status == 200:
+                    data = await response.json(content_type=None)
+                    if isinstance(data, dict):
+                        fact = data.get("fact")
+                        if isinstance(fact, str) and fact.strip():
+                            return fact.strip()
+        except Exception:
+            pass
+        return None
