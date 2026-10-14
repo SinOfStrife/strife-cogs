@@ -16,7 +16,7 @@ A sleek, modern invite command for Red-DiscordBot using Discord's Components V2.
 
 ## Features
 
-* **V2 embedss:** Upgrades your standard bot invite into a gorgeous, modern embed with custom accent colors and thumbnail support.
+* **V2 embeds:** Upgrades your standard bot invite into a gorgeous, modern embed with custom accent colors and thumbnail support.
 * **Live Stats:** Shows your bot's current server and user count right on the card so people can see your reach.
 * **Fully Customizable:** Easily change the title, message, footer, and buttons to match your bot's brand.
 * **Smart DM Delivery:** Sends the invite card straight to the user's DMs so it doesn't clutter public chat channels.
