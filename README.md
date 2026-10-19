@@ -75,7 +75,6 @@ Contributions are welcome! Before opening a pull request, please make sure your 
 <!-- markdownlint-restore -->
 <!-- prettier-ignore-end -->
 <!-- ALL-CONTRIBUTORS-LIST:END -->
-[![All Contributors](https://img.shields.io/github/all-contributors/SinOfStrife/strife-cogs?color=ee8449&style=flat-square)](#contributors)
 
 ---
 
