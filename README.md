@@ -44,8 +44,6 @@ To install these cogs, make sure you have the Downloader cog loaded, then run th
 
 ## Data Privacy & GDPR
 
-In accordance with Red-DiscordBot standards, all cogs declare their data retention policies:
-
 | Cog | Stores User Data? | Purpose |
 | :--- | :---: | :--- |
 | **advancedinviteV2** | ❌ No | Does not store user data. |
