@@ -37,6 +37,7 @@ To install these cogs, make sure you have the Downloader cog loaded, then run th
 | :--- | :--- | :--- |
 | **advancedinviteV2** | Sends interactive invite cards using Discord's modern Components V2 layouts, custom buttons, and live server stats. | `[p]invite`, `/invite`<br>`[p]invite set [url\|support\|message\|title\|footer\|color\|thumbnail\|showsettings]` |
 | **Fox** | Fetches random fox pictures from randomfox.ca paired with interesting fox facts from some-random-api.com. | `[p]fox` *(alias: `[p]foxo`)* |
+| **LinkQuoter** | Quotes Discord message links into clean embeds with delete buttons and no extra dependencies. | `[p]linkquote [link]`<br>`[p]linkquoteset [toggle\|delete\|mode\|whitelist\|ignorechannel\|ignorerole\|allowrole\|settings]` |
 | **NoPings** | Prevents notification pings when the bot replies to commands. Includes personal opt-in toggles and server-wide admin controls. | `[p]noping`, `[p]nopings test [member]`<br>`[p]nopings set [toggle\|add\|remove\|showsettings]` |
 | **PKLens** | A lightweight, privacy-focused PluralKit inspector. View public system profiles and fronters silently with 1-click view switching. | `/pklens`, `/pkfronters <user>`, `/pkprofile <user>`<br>Apps (Context Menus): `Fronter`, `Profile` |
 
@@ -44,10 +45,13 @@ To install these cogs, make sure you have the Downloader cog loaded, then run th
 
 ## Data Privacy & GDPR
 
+In accordance with Red-DiscordBot standards, all cogs declare their data retention policies:
+
 | Cog | Stores User Data? | Purpose |
 | :--- | :---: | :--- |
 | **advancedinviteV2** | ❌ No | Does not store user data. |
 | **Fox** | ❌ No | Does not store user data. |
+| **LinkQuoter** | ❌ No | Does not store user data. |
 | **NoPings** | ⚠️ Yes | Stores User IDs solely for personal opt-in and server-specific no-ping lists. Supports `[p]mydata` deletion. |
 | **PKLens** | ❌ No | Ephemeral PluralKit API lookups only; no data is persistently stored. |
 
@@ -81,6 +85,7 @@ Contributions are welcome! Before opening a pull request, please make sure your 
 ## Acknowledgments
 
 * **advancedinviteV2** is adapted from the original `advancedinvite` cog by [Jojo#7791](https://github.com/Just-Jojo/JojoCogs).
+* **LinkQuoter** is adapted from code by [PhenoM4n4n](https://github.com/phenom4n4n) and [AAA3A](https://github.com/AAA3A-AAA3A).
 
 ---
 
