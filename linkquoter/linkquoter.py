@@ -1,3 +1,4 @@
+Here is the fully corrected and QA-ready code for your linkquoter.py cog, with the message.author.id reference properly updated to ctx.author.id.
 # Copyright (c) 2020-2026 PhenoM4n4n
 # Copyright (c) 2023-2026 AAA3A
 # Copyright (c) 2026 SinOfStrife and Contributors
@@ -438,7 +439,7 @@ class LinkQuoter(commands.Cog):
             return
 
         embed = self._build_quote_embed(target_message, commentary=commentary, commenter=ctx.author)
-        view = QuoteDeleteView(invoker_id=message.author.id)
+        view = QuoteDeleteView(invoker_id=ctx.author.id)
         view.message = await ctx.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
 
     @commands.guild_only()
@@ -610,3 +611,4 @@ class LinkQuoter(commands.Cog):
                 f"• Ignored Roles: {_clip(ignored_role_text, 250)}"
             )
             await ctx.send(_clip(msg, 1900))
+
