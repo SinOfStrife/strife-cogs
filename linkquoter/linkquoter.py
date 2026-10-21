@@ -80,7 +80,7 @@ class LinkQuoter(commands.Cog):
     """Quotes Discord message links with rich previews, thread support, and flexible cross-server security."""
 
     __author__ = ["SinOfStrife"]
-    __version__ = "3.1.7"
+    __version__ = "3.1.8"
     __red_end_user_data_statement__ = "This cog does not persistently store personal data about users."
 
     def __init__(self, bot: Red):
@@ -413,7 +413,8 @@ class LinkQuoter(commands.Cog):
                     match = LINK_REGEX.search(target_link)
                 elif ctx.message.reference.message_id:
                     ref = ctx.message.reference
-                    target_link = f"https://discord.com/channels/{ctx.guild.id}/{ref.channel_id}/{ref.message_id}"
+                    guild_id = ref.guild_id or ctx.guild.id
+                    target_link = f"https://discord.com/channels/{guild_id}/{ref.channel_id}/{ref.message_id}"
                     match = LINK_REGEX.search(target_link)
 
             if match and target_text:
@@ -610,4 +611,3 @@ class LinkQuoter(commands.Cog):
                 f"• Ignored Roles: {_clip(ignored_role_text, 250)}"
             )
             await ctx.send(_clip(msg, 1900))
-
