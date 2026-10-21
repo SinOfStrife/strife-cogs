@@ -1,4 +1,3 @@
-Here is the fully corrected and QA-ready code for your linkquoter.py cog, with the message.author.id reference properly updated to ctx.author.id.
 # Copyright (c) 2020-2026 PhenoM4n4n
 # Copyright (c) 2023-2026 AAA3A
 # Copyright (c) 2026 SinOfStrife and Contributors
