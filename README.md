@@ -30,6 +30,12 @@ To install these cogs, make sure you have the Downloader cog loaded, then run th
 
 > **Note:** For cogs featuring application commands (`advancedinviteV2`, `PKLens`), run `[p]slash sync` if the commands do not appear immediately.
 
+> **User Apps Setup (`PKLens`):**
+> To allow `PKLens` to be installed to personal Discord accounts (DMs, group chats, and external servers on **Red 3.5.10+**):
+> 1. In the [Discord Developer Portal](https://discord.com/developers/applications) ➔ **Installation**, enable both **Guild Install** and **User Install**, set **Install Link** to **Discord Provided Link**, and configure **Default Install Settings** (`bot` + `applications.commands` for Guild Install; `applications.commands` for User Install).
+> 2. Run `[p]slash sync` **globally** (with **no server ID**—User Apps only work on global syncs), then refresh Discord (`Ctrl+R` / `Cmd+R`).
+> 3. Users can then click **Add PKLens** in `/pklens` and select **Add to My Apps**. *(External servers that disable **Use External Apps** will block user-installed commands in those channels.)*
+
 ---
 
 ## Available Cogs
