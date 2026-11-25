@@ -23,6 +23,30 @@ PKLens allows you to look up public PluralKit system profiles and current fronte
     [p]load pklens
     [p]slash sync
 
+### Setting Up User Apps (Bot Owners)
+
+To allow PKLens to be installed to personal Discord accounts for use in DMs, group chats, and external servers (**requires Red 3.5.10+ / `discord.py 2.4+`**):
+
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications) and select your bot's application.
+2. Go to **Installation** in the left sidebar.
+3. Under **Installation Contexts**, enable both **Guild Install** and **User Install**.
+4. Set **Install Link** to **Discord Provided Link**.
+5. Under **Default Install Settings**:
+   * **Guild Install:** Add scopes `bot` and `applications.commands`.
+   * **User Install:** Add scope `applications.commands` *(this is required for the **Add PKLens** button in `/pklens` to work)*.
+6. Save changes, then run `[p]slash sync` **globally** in Red (do **not** pass a server ID—User Apps only work on global syncs) and refresh Discord (`Ctrl+R` / `Cmd+R`).
+
+> **Notes:**
+> * PKLens auto-enables its slash commands on load, so `[p]slash enablecog` is not required.
+> * On Red versions older than `3.5.10`, PKLens falls back to standard server-only commands.
+> * External servers that disable Discord's **Use External Apps** permission will block user-installed commands in those channels.
+
+### Installing as a Personal User App (Users)
+
+Once configured by the bot owner:
+1. Run `/pklens` and click **Add PKLens** (or open the bot's **Discord Provided Link**).
+2. Choose **Add to My Apps** to add it to your personal Discord account.
+
 ---
 
 ## Usage & Commands
