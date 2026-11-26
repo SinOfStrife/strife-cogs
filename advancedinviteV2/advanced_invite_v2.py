@@ -22,7 +22,6 @@ from .utils import (
 
 log = logging.getLogger("red.advancedinvitev2")
 
-# Required by Red QA: End User Data statement matching info.json verbatim
 __red_end_user_data_statement__: Final[str] = (
     "This cog does not store end user data."
 )
@@ -58,7 +57,6 @@ class AdvancedInviteV2(commands.Cog):
         self.config.register_global(**_config_structure)
 
     async def red_get_data_for_user(self, *, user_id: int) -> Dict[str, Any]:
-        """Required by Red QA: This cog does not store any personal user data."""
         return {}
 
     async def red_delete_data_for_user(
@@ -67,7 +65,6 @@ class AdvancedInviteV2(commands.Cog):
         requester: Any,
         user_id: int,
     ) -> None:
-        """Required by Red QA: This cog does not store any personal user data."""
         return
 
     def cog_unload(self) -> None:
@@ -267,7 +264,9 @@ class AdvancedInviteV2(commands.Cog):
         }
 
         allowed_mentions: Dict[str, Any] = (
-            {"users": [str(mention_user_id)]} if mention_user_id else {"parse": []}
+            {"parse": [], "users": [str(mention_user_id)]}
+            if mention_user_id
+            else {"parse": []}
         )
 
         return {
@@ -276,16 +275,13 @@ class AdvancedInviteV2(commands.Cog):
             "allowed_mentions": allowed_mentions,
         }
 
-    # ==========================================
-    # PUBLIC SLASH COMMAND
-    # ==========================================
     @app_commands.command(
         name="invite",
         description="Get the official invite link for the bot.",
         extras={"red_force_enable": True},
     )
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=False)
+    @app_commands.allowed_installs(guilds=True, users=False)
     async def slash_invite(self, interaction: discord.Interaction) -> None:
         cached_guild = self.bot.get_guild(interaction.guild_id) if interaction.guild_id else None
         if cached_guild is not None and await self.bot.cog_disabled_in_guild(self, cached_guild):
@@ -307,7 +303,7 @@ class AdvancedInviteV2(commands.Cog):
 
         me = (cached_guild.me if cached_guild else None) or self.bot.user
 
-        # DM Execution: respond directly in DMs with the Components V2 card
+        # Bot DM execution
         if interaction.guild_id is None:
             await interaction.response.defer(ephemeral=False)
             payload = await self._build_invite_payload(me)
@@ -325,7 +321,7 @@ class AdvancedInviteV2(commands.Cog):
                 await interaction.followup.send(f"An error occurred: `{error}`", ephemeral=True)
             return
 
-        # Guild / External Server Execution: send invite to DM, reply with ephemeral confirmation
+        # Guild execution
         await interaction.response.defer(ephemeral=True)
         payload = await self._build_invite_payload(me)
 
@@ -346,7 +342,6 @@ class AdvancedInviteV2(commands.Cog):
             )
 
         except (discord.Forbidden, discord.HTTPException):
-            # User DMs are closed or no mutual server: deliver ephemerally inside the channel
             log.info("DM delivery failed for %s (%s). Providing ephemeral channel fallback.", interaction.user, interaction.user.id)
             warning_text = (
                 f"⚠️ {interaction.user.mention}, I couldn't send you a DM "
@@ -382,9 +377,6 @@ class AdvancedInviteV2(commands.Cog):
             log.exception("Unexpected error in slash invite for %s", interaction.user.id)
             await interaction.followup.send(f"An unexpected error occurred: `{error}`", ephemeral=True)
 
-    # ==========================================
-    # PREFIX COMMANDS ([p]invite and settings)
-    # ==========================================
     @commands.bot_has_permissions(send_messages=True)
     @commands.group(name="invite", usage="", invoke_without_command=True)
     @commands.check(can_invite)
@@ -396,7 +388,7 @@ class AdvancedInviteV2(commands.Cog):
         me = ctx.me or self.bot.user
         payload = await self._build_invite_payload(me)
 
-        # DM Execution: post directly into DMs
+        # DM execution
         if ctx.guild is None:
             try:
                 await self._send_raw_v2_payload(ctx.channel.id, payload)
@@ -412,7 +404,7 @@ class AdvancedInviteV2(commands.Cog):
                 await ctx.send(f"Failed to send invite: `{error}`")
             return
 
-        # Guild Execution: send to DMs, notify in channel
+        # Guild execution
         try:
             dm_channel = ctx.author.dm_channel or await ctx.author.create_dm()
             try:
@@ -431,7 +423,6 @@ class AdvancedInviteV2(commands.Cog):
                 pass
 
         except (discord.Forbidden, discord.HTTPException):
-            # User DMs are closed: post in channel fallback
             log.info("DM delivery failed for %s (%s). Falling back to channel message.", ctx.author, ctx.author.id)
             warning_text = (
                 f"⚠️ {ctx.author.mention}, I couldn't send you a DM "
@@ -464,9 +455,6 @@ class AdvancedInviteV2(commands.Cog):
             log.exception("Unexpected error in invite command for user %s", ctx.author.id)
             await ctx.send(f"Failed to send invite: `{error}`")
 
-    # ==========================================
-    # CONFIGURATION COMMANDS
-    # ==========================================
     @invite.group(name="settings", aliases=("set",), invoke_without_command=True)
     @commands.is_owner()
     async def invite_settings(self, ctx: commands.Context) -> None:
