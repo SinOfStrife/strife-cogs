@@ -27,6 +27,8 @@ __red_end_user_data_statement__: Final[str] = (
     "This cog does not store end user data."
 )
 
+COMPONENTS_V2_FLAG: Final[int] = 32768
+
 
 async def can_invite(ctx: commands.Context) -> bool:
     return await ctx.bot.is_owner(ctx.author) or await ctx.bot.is_invite_url_public()
@@ -47,12 +49,11 @@ class AdvancedInviteV2(commands.Cog):
     """An advanced invite cog built using Discord Components V2 layout structures. Adapted from JojoCogs."""
 
     __author__: Final[List[str]] = ["SinOfStrife"]
-    __version__: Final[str] = "4.5.14"
+    __version__: Final[str] = "4.5.15"
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
         self._invite_command: Optional[commands.Command] = self.bot.remove_command("invite")
-        # Unique cog storage ID
         self.config = Config.get_conf(self, 957289026195435520, force_registration=True)
         self.config.register_global(**_config_structure)
 
@@ -96,7 +97,6 @@ class AdvancedInviteV2(commands.Cog):
         guild_count_str: str,
         user_count_str: str,
     ) -> Optional[str]:
-        """Replace all configured placeholders in any given string template."""
         if not template:
             return template
 
@@ -119,14 +119,12 @@ class AdvancedInviteV2(commands.Cog):
         return result
 
     async def _send_raw_v2_payload(self, channel_id: int, payload: Dict[str, Any]) -> None:
-        """Send a Components V2 payload directly to a Discord channel via REST."""
         route = Route("POST", "/channels/{channel_id}/messages", channel_id=channel_id)
         await self.bot.http.request(route, json=payload)
 
     async def _send_interaction_payload(
         self, interaction: discord.Interaction, payload: Dict[str, Any], ephemeral: bool = False
     ) -> None:
-        """Edit or fulfill an interaction with a Components V2 payload via REST."""
         app_id = interaction.application_id or self.bot.application_id
         route = Route(
             "PATCH",
@@ -135,12 +133,19 @@ class AdvancedInviteV2(commands.Cog):
             interaction_token=interaction.token,
         )
         data = dict(payload)
+        data["flags"] = data.get("flags", 0) | COMPONENTS_V2_FLAG
         if ephemeral:
-            data["flags"] = data.get("flags", 0) | 64
+            data["flags"] |= 64
         await self.bot.http.request(route, json=data)
 
-    async def _build_invite_payload(self, me: Union[discord.ClientUser, discord.Member]) -> Dict[str, Any]:
-        """Construct the Components V2 JSON message payload according to Discord specifications."""
+    async def _build_invite_payload(
+        self,
+        me: Union[discord.ClientUser, discord.Member],
+        *,
+        warning_prefix: Optional[str] = None,
+        mention_user_id: Optional[int] = None,
+        include_thumbnail: bool = True,
+    ) -> Dict[str, Any]:
         settings = await self.config.all()
         bot_name = me.name
 
@@ -171,13 +176,13 @@ class AdvancedInviteV2(commands.Cog):
 
         support = settings.get("support_server")
         accent_color = settings.get("accent_color", 5793266)
-        thumbnail = settings.get("thumbnail")
+        thumbnail = settings.get("thumbnail") if include_thumbnail else None
 
         buttons: List[Dict[str, Any]] = [
             {
                 "type": 2,
                 "style": 5,
-                "label": f"Invite {bot_name}",
+                "label": f"Invite {bot_name}"[:80],
                 "url": url,
             }
         ]
@@ -195,6 +200,17 @@ class AdvancedInviteV2(commands.Cog):
         }
 
         container_components: List[Dict[str, Any]] = []
+
+        if warning_prefix:
+            container_components.append({
+                "type": 10,
+                "content": warning_prefix,
+            })
+            container_components.append({
+                "type": 14,
+                "divider": True,
+                "spacing": 1,
+            })
 
         thumb_url: Optional[str] = None
         if thumbnail:
@@ -250,9 +266,14 @@ class AdvancedInviteV2(commands.Cog):
             "components": container_components,
         }
 
+        allowed_mentions: Dict[str, Any] = (
+            {"users": [str(mention_user_id)]} if mention_user_id else {"parse": []}
+        )
+
         return {
             "components": [container_component],
-            "flags": 32768,
+            "flags": COMPONENTS_V2_FLAG,
+            "allowed_mentions": allowed_mentions,
         }
 
     # ==========================================
@@ -266,7 +287,14 @@ class AdvancedInviteV2(commands.Cog):
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.allowed_installs(guilds=True, users=True)
     async def slash_invite(self, interaction: discord.Interaction) -> None:
-        """Request the bot's invite link through Discord's slash command menu."""
+        cached_guild = self.bot.get_guild(interaction.guild_id) if interaction.guild_id else None
+        if cached_guild is not None and await self.bot.cog_disabled_in_guild(self, cached_guild):
+            await interaction.response.send_message(
+                "This command is disabled in this server.",
+                ephemeral=True,
+            )
+            return
+
         is_owner = await self.bot.is_owner(interaction.user)
         is_public = await self.bot.is_invite_url_public()
 
@@ -277,59 +305,72 @@ class AdvancedInviteV2(commands.Cog):
             )
             return
 
-        me = (interaction.guild.me if interaction.guild else None) or self.bot.user
-        payload = await self._build_invite_payload(me)
+        me = (cached_guild.me if cached_guild else None) or self.bot.user
 
         # DM Execution: respond directly in DMs with the Components V2 card
-        if interaction.guild is None:
+        if interaction.guild_id is None:
             await interaction.response.defer(ephemeral=False)
+            payload = await self._build_invite_payload(me)
             try:
                 await self._send_interaction_payload(interaction, payload, ephemeral=False)
+            except discord.HTTPException as err:
+                if err.code == 50035:
+                    fallback = await self._build_invite_payload(me, include_thumbnail=False)
+                    await self._send_interaction_payload(interaction, fallback, ephemeral=False)
+                else:
+                    log.exception("Error delivering slash invite in DMs for %s", interaction.user.id)
+                    await interaction.followup.send(f"An error occurred: `{err}`", ephemeral=True)
             except Exception as error:
                 log.exception("Error delivering slash invite in DMs for %s", interaction.user.id)
                 await interaction.followup.send(f"An error occurred: `{error}`", ephemeral=True)
             return
 
-        # Guild Execution: send invite to DM, reply with ephemeral confirmation
+        # Guild / External Server Execution: send invite to DM, reply with ephemeral confirmation
         await interaction.response.defer(ephemeral=True)
+        payload = await self._build_invite_payload(me)
 
         try:
             dm_channel = interaction.user.dm_channel or await interaction.user.create_dm()
-            await self._send_raw_v2_payload(dm_channel.id, payload)
+            try:
+                await self._send_raw_v2_payload(dm_channel.id, payload)
+            except discord.HTTPException as err:
+                if err.code == 50035:
+                    no_thumb = await self._build_invite_payload(me, include_thumbnail=False)
+                    await self._send_raw_v2_payload(dm_channel.id, no_thumb)
+                else:
+                    raise
+
             await interaction.followup.send(
                 f"📬 {interaction.user.mention}, I've sent you a DM with the invite!",
                 ephemeral=True,
             )
 
         except (discord.Forbidden, discord.HTTPException):
-            # User DMs are closed: fall back to delivering the invite ephemerally in the channel
+            # User DMs are closed or no mutual server: deliver ephemerally inside the channel
             log.info("DM delivery failed for %s (%s). Providing ephemeral channel fallback.", interaction.user, interaction.user.id)
+            warning_text = (
+                f"⚠️ {interaction.user.mention}, I couldn't send you a DM "
+                "(your DMs might be closed). Here is the invite:"
+            )
             try:
-                settings = await self.config.all()
-                accent_color = settings.get("accent_color", 5793266)
-
-                warning_container = {
-                    "type": 17,
-                    "accent_color": accent_color,
-                    "spoiler": False,
-                    "components": [
-                        {
-                            "type": 10,
-                            "content": f"⚠️ {interaction.user.mention}, I couldn't send you a DM (your DMs might be closed). Here is the invite:",
-                        },
-                        {
-                            "type": 14,
-                            "divider": True,
-                            "spacing": 1,
-                        },
-                    ] + payload["components"],
-                }
-
-                fallback_payload = {
-                    "components": [warning_container],
-                    "flags": 64,
-                }
-                await self._send_interaction_payload(interaction, fallback_payload, ephemeral=True)
+                fallback_payload = await self._build_invite_payload(
+                    me,
+                    warning_prefix=warning_text,
+                    mention_user_id=interaction.user.id,
+                )
+                try:
+                    await self._send_interaction_payload(interaction, fallback_payload, ephemeral=True)
+                except discord.HTTPException as err:
+                    if err.code == 50035:
+                        no_thumb = await self._build_invite_payload(
+                            me,
+                            warning_prefix=warning_text,
+                            mention_user_id=interaction.user.id,
+                            include_thumbnail=False,
+                        )
+                        await self._send_interaction_payload(interaction, no_thumb, ephemeral=True)
+                    else:
+                        raise
             except Exception as patch_err:
                 log.exception("Failed to send ephemeral fallback to %s", interaction.user.id)
                 await interaction.followup.send(
@@ -359,6 +400,13 @@ class AdvancedInviteV2(commands.Cog):
         if ctx.guild is None:
             try:
                 await self._send_raw_v2_payload(ctx.channel.id, payload)
+            except discord.HTTPException as err:
+                if err.code == 50035:
+                    no_thumb = await self._build_invite_payload(me, include_thumbnail=False)
+                    await self._send_raw_v2_payload(ctx.channel.id, no_thumb)
+                else:
+                    log.exception("Error in DM prefix invite for user %s", ctx.author.id)
+                    await ctx.send(f"Failed to send invite: `{err}`")
             except Exception as error:
                 log.exception("Error in DM prefix invite for user %s", ctx.author.id)
                 await ctx.send(f"Failed to send invite: `{error}`")
@@ -367,7 +415,14 @@ class AdvancedInviteV2(commands.Cog):
         # Guild Execution: send to DMs, notify in channel
         try:
             dm_channel = ctx.author.dm_channel or await ctx.author.create_dm()
-            await self._send_raw_v2_payload(dm_channel.id, payload)
+            try:
+                await self._send_raw_v2_payload(dm_channel.id, payload)
+            except discord.HTTPException as err:
+                if err.code == 50035:
+                    no_thumb = await self._build_invite_payload(me, include_thumbnail=False)
+                    await self._send_raw_v2_payload(dm_channel.id, no_thumb)
+                else:
+                    raise
 
             msg = await ctx.send(f"{ctx.author.mention}, I've sent you a DM with the invite!")
             try:
@@ -378,33 +433,29 @@ class AdvancedInviteV2(commands.Cog):
         except (discord.Forbidden, discord.HTTPException):
             # User DMs are closed: post in channel fallback
             log.info("DM delivery failed for %s (%s). Falling back to channel message.", ctx.author, ctx.author.id)
-            settings = await self.config.all()
-            accent_color = settings.get("accent_color", 5793266)
-
-            warning_container = {
-                "type": 17,
-                "accent_color": accent_color,
-                "spoiler": False,
-                "components": [
-                    {
-                        "type": 10,
-                        "content": f"⚠️ {ctx.author.mention}, I couldn't send you a DM (your DMs might be closed). Here is the invite:",
-                    },
-                    {
-                        "type": 14,
-                        "divider": True,
-                        "spacing": 1,
-                    },
-                ] + payload["components"],
-            }
-
-            fallback_payload = {
-                "components": [warning_container],
-                "flags": 32768,
-            }
-
+            warning_text = (
+                f"⚠️ {ctx.author.mention}, I couldn't send you a DM "
+                "(your DMs might be closed). Here is the invite:"
+            )
             try:
-                await self._send_raw_v2_payload(ctx.channel.id, fallback_payload)
+                fallback_payload = await self._build_invite_payload(
+                    me,
+                    warning_prefix=warning_text,
+                    mention_user_id=ctx.author.id,
+                )
+                try:
+                    await self._send_raw_v2_payload(ctx.channel.id, fallback_payload)
+                except discord.HTTPException as err:
+                    if err.code == 50035:
+                        no_thumb = await self._build_invite_payload(
+                            me,
+                            warning_prefix=warning_text,
+                            mention_user_id=ctx.author.id,
+                            include_thumbnail=False,
+                        )
+                        await self._send_raw_v2_payload(ctx.channel.id, no_thumb)
+                    else:
+                        raise
             except Exception as channel_err:
                 log.exception("Failed to send invite fallback in channel %s", ctx.channel.id)
                 await ctx.send(f"Failed to deliver invite: `{channel_err}`")
@@ -455,8 +506,13 @@ class AdvancedInviteV2(commands.Cog):
                 invite_url = f"https://{invite_url}"
 
             parsed = urlparse(invite_url)
-            if not parsed.netloc or parsed.scheme not in ("http", "https") or len(invite_url) > 512:
-                await ctx.send("Please provide a valid HTTP or HTTPS invite URL (max 512 characters).")
+            if (
+                not parsed.netloc
+                or parsed.scheme not in ("http", "https")
+                or len(invite_url) > 512
+                or any(ch.isspace() for ch in invite_url)
+            ):
+                await ctx.send("Please provide a valid HTTP or HTTPS invite URL (max 512 characters, no spaces).")
                 return
 
             await self.config.custom_invite.set(str(invite_url))
@@ -492,9 +548,14 @@ class AdvancedInviteV2(commands.Cog):
                 invite_url = f"https://{invite_url}"
 
             parsed = urlparse(invite_url)
-            if not parsed.netloc or parsed.scheme not in ("http", "https") or len(invite_url) > 512:
+            if (
+                not parsed.netloc
+                or parsed.scheme not in ("http", "https")
+                or len(invite_url) > 512
+                or any(ch.isspace() for ch in invite_url)
+            ):
                 await ctx.send(
-                    "Invalid URL provided. Please pass a valid Discord invite or web link (max 512 characters)."
+                    "Invalid URL provided. Please pass a valid Discord invite or web link (max 512 characters, no spaces)."
                 )
                 return
 
@@ -610,7 +671,7 @@ class AdvancedInviteV2(commands.Cog):
                 f"• **Thumbnail:** {thumb_display}",
             ]
             msg = "**Advanced Invite V2 Settings Overview**\n\n" + "\n".join(lines)
-            await ctx.send(msg)
+            await ctx.send(msg, allowed_mentions=discord.AllowedMentions.none())
         except Exception as error:
             log.exception("Failed to display settings.")
             await ctx.send(f"Failed to display settings: `{error}`")
