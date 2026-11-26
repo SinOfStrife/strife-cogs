@@ -1,9 +1,0 @@
-{
-  "author": ["SinOfStrife"],
-  "name": "NoPings",
-  "short": "Prevents the bot from pinging users when replying to them.",
-  "description": "Stops notification pings when the bot replies to commands. Users can toggle this preference for themselves, or admins can enforce it server-wide.",
-  "tags": ["utility", "replies", "mentions", "notifications"],
-  "min_bot_version": "3.5.0",
-  "end_user_data_statement": "This cog stores Discord User IDs and Guild IDs to remember notification and reply ping preferences."
-}
