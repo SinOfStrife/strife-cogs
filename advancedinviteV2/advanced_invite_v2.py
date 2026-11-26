@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import Any, Dict, Final, List, Optional, Union
+from typing import Any, Dict, Final, List, Optional, Set, Union
 from urllib.parse import urlparse
 
 import discord
@@ -26,6 +27,7 @@ __red_end_user_data_statement__: Final[str] = (
     "This cog does not store end user data."
 )
 
+SUPPRESS_NOTIFICATIONS_FLAG: Final[int] = 4096
 COMPONENTS_V2_FLAG: Final[int] = 32768
 
 
@@ -48,13 +50,14 @@ class AdvancedInviteV2(commands.Cog):
     """An advanced invite cog built using Discord Components V2 layout structures. Adapted from JojoCogs."""
 
     __author__: Final[List[str]] = ["SinOfStrife"]
-    __version__: Final[str] = "4.5.15"
+    __version__: Final[str] = "4.5.16"
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
         self._invite_command: Optional[commands.Command] = self.bot.remove_command("invite")
         self.config = Config.get_conf(self, 957289026195435520, force_registration=True)
         self.config.register_global(**_config_structure)
+        self._delete_tasks: Set[asyncio.Task[None]] = set()
 
     async def red_get_data_for_user(self, *, user_id: int) -> Dict[str, Any]:
         return {}
@@ -68,6 +71,10 @@ class AdvancedInviteV2(commands.Cog):
         return
 
     def cog_unload(self) -> None:
+        for task in list(self._delete_tasks):
+            task.cancel()
+        self._delete_tasks.clear()
+
         self.bot.remove_command("invite")
         if self._invite_command:
             try:
@@ -115,9 +122,30 @@ class AdvancedInviteV2(commands.Cog):
             result = result.replace(placeholder, value)
         return result
 
-    async def _send_raw_v2_payload(self, channel_id: int, payload: Dict[str, Any]) -> None:
+    async def _send_raw_v2_payload(self, channel_id: int, payload: Dict[str, Any]) -> Optional[int]:
         route = Route("POST", "/channels/{channel_id}/messages", channel_id=channel_id)
-        await self.bot.http.request(route, json=payload)
+        data = await self.bot.http.request(route, json=payload)
+        return int(data["id"]) if isinstance(data, dict) and "id" in data else None
+
+    async def _delete_message_after(self, channel_id: int, message_id: int, delay: float) -> None:
+        await asyncio.sleep(delay)
+        route = Route(
+            "DELETE",
+            "/channels/{channel_id}/messages/{message_id}",
+            channel_id=channel_id,
+            message_id=message_id,
+        )
+        try:
+            await self.bot.http.request(route)
+        except discord.HTTPException:
+            pass
+
+    def _schedule_delete(self, channel_id: int, message_id: Optional[int], delay: float = 10.0) -> None:
+        if message_id is None:
+            return
+        task = asyncio.create_task(self._delete_message_after(channel_id, message_id, delay))
+        self._delete_tasks.add(task)
+        task.add_done_callback(self._delete_tasks.discard)
 
     async def _send_interaction_payload(
         self, interaction: discord.Interaction, payload: Dict[str, Any], ephemeral: bool = False
@@ -130,17 +158,38 @@ class AdvancedInviteV2(commands.Cog):
             interaction_token=interaction.token,
         )
         data = dict(payload)
-        data["flags"] = data.get("flags", 0) | COMPONENTS_V2_FLAG
+        flags = (data.get("flags", 0) | COMPONENTS_V2_FLAG) & ~SUPPRESS_NOTIFICATIONS_FLAG
         if ephemeral:
-            data["flags"] |= 64
+            flags |= 64
+        data["flags"] = flags
         await self.bot.http.request(route, json=data)
+
+    async def _build_dm_notice_payload(self, bot_name: str) -> Dict[str, Any]:
+        accent_color = await self.config.accent_color()
+        return {
+            "flags": COMPONENTS_V2_FLAG | SUPPRESS_NOTIFICATIONS_FLAG,
+            "allowed_mentions": {"parse": []},
+            "components": [
+                {
+                    "type": 17,
+                    "accent_color": accent_color if accent_color is not None else 5793266,
+                    "spoiler": False,
+                    "components": [
+                        {
+                            "type": 10,
+                            "content": f"### 📬 Invite Sent\nI've sent the invite for **{bot_name}** to your DMs.",
+                        }
+                    ],
+                }
+            ],
+        }
 
     async def _build_invite_payload(
         self,
         me: Union[discord.ClientUser, discord.Member],
         *,
         warning_prefix: Optional[str] = None,
-        mention_user_id: Optional[int] = None,
+        suppress_notifications: bool = False,
         include_thumbnail: bool = True,
     ) -> Dict[str, Any]:
         settings = await self.config.all()
@@ -263,16 +312,14 @@ class AdvancedInviteV2(commands.Cog):
             "components": container_components,
         }
 
-        allowed_mentions: Dict[str, Any] = (
-            {"parse": [], "users": [str(mention_user_id)]}
-            if mention_user_id
-            else {"parse": []}
-        )
+        flags = COMPONENTS_V2_FLAG
+        if suppress_notifications:
+            flags |= SUPPRESS_NOTIFICATIONS_FLAG
 
         return {
             "components": [container_component],
-            "flags": COMPONENTS_V2_FLAG,
-            "allowed_mentions": allowed_mentions,
+            "flags": flags,
+            "allowed_mentions": {"parse": []},
         }
 
     @app_commands.command(
@@ -336,22 +383,16 @@ class AdvancedInviteV2(commands.Cog):
                 else:
                     raise
 
-            await interaction.followup.send(
-                f"📬 {interaction.user.mention}, I've sent you a DM with the invite!",
-                ephemeral=True,
-            )
+            notice_payload = await self._build_dm_notice_payload(me.name)
+            await self._send_interaction_payload(interaction, notice_payload, ephemeral=True)
 
         except (discord.Forbidden, discord.HTTPException):
             log.info("DM delivery failed for %s (%s). Providing ephemeral channel fallback.", interaction.user, interaction.user.id)
-            warning_text = (
-                f"⚠️ {interaction.user.mention}, I couldn't send you a DM "
-                "(your DMs might be closed). Here is the invite:"
-            )
+            warning_text = "⚠️ I couldn't send you a DM (your DMs might be closed). Here is the invite:"
             try:
                 fallback_payload = await self._build_invite_payload(
                     me,
                     warning_prefix=warning_text,
-                    mention_user_id=interaction.user.id,
                 )
                 try:
                     await self._send_interaction_payload(interaction, fallback_payload, ephemeral=True)
@@ -360,7 +401,6 @@ class AdvancedInviteV2(commands.Cog):
                         no_thumb = await self._build_invite_payload(
                             me,
                             warning_prefix=warning_text,
-                            mention_user_id=interaction.user.id,
                             include_thumbnail=False,
                         )
                         await self._send_interaction_payload(interaction, no_thumb, ephemeral=True)
@@ -416,23 +456,18 @@ class AdvancedInviteV2(commands.Cog):
                 else:
                     raise
 
-            msg = await ctx.send(f"{ctx.author.mention}, I've sent you a DM with the invite!")
-            try:
-                await msg.delete(delay=10)
-            except Exception:
-                pass
+            notice_payload = await self._build_dm_notice_payload(me.name)
+            sent_id = await self._send_raw_v2_payload(ctx.channel.id, notice_payload)
+            self._schedule_delete(ctx.channel.id, sent_id, 10.0)
 
         except (discord.Forbidden, discord.HTTPException):
             log.info("DM delivery failed for %s (%s). Falling back to channel message.", ctx.author, ctx.author.id)
-            warning_text = (
-                f"⚠️ {ctx.author.mention}, I couldn't send you a DM "
-                "(your DMs might be closed). Here is the invite:"
-            )
+            warning_text = "⚠️ I couldn't send you a DM (your DMs might be closed). Here is the invite:"
             try:
                 fallback_payload = await self._build_invite_payload(
                     me,
                     warning_prefix=warning_text,
-                    mention_user_id=ctx.author.id,
+                    suppress_notifications=True,
                 )
                 try:
                     await self._send_raw_v2_payload(ctx.channel.id, fallback_payload)
@@ -441,7 +476,7 @@ class AdvancedInviteV2(commands.Cog):
                         no_thumb = await self._build_invite_payload(
                             me,
                             warning_prefix=warning_text,
-                            mention_user_id=ctx.author.id,
+                            suppress_notifications=True,
                             include_thumbnail=False,
                         )
                         await self._send_raw_v2_payload(ctx.channel.id, no_thumb)
