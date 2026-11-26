@@ -14,19 +14,19 @@ A collection of custom cogs for Red-DiscordBot.
 To install these cogs, make sure you have the Downloader cog loaded, then run the following commands in your bot:
 
 1. Add this repository to your bot:
-```ini
+~~~ini
 [p]repo add strife-cogs https://github.com/SinOfStrife/strife-cogs
-```
+~~~
 
 2. Install the cog you want:
-```ini
+~~~ini
 [p]cog install strife-cogs <cog_name>
-```
+~~~
 
 3. Load the cog:
-```ini
+~~~ini
 [p]load <cog_name>
-```
+~~~
 
 > **Note:** For cogs featuring application commands (`advancedinviteV2`, `PKLens`), run `[p]slash sync` if the commands do not appear immediately.
 
@@ -45,7 +45,6 @@ To install these cogs, make sure you have the Downloader cog loaded, then run th
 | **advancedinviteV2** | Sends interactive invite cards using Discord's modern Components V2 layouts, custom buttons, and live server stats. | `[p]invite`, `/invite`<br>`[p]invite set [url\|support\|message\|title\|footer\|color\|thumbnail\|showsettings]` |
 | **Fox** | Fetches random fox pictures from randomfox.ca paired with interesting fox facts from some-random-api.com. | `[p]fox` *(alias: `[p]foxo`)* |
 | **LinkQuoter** | Quotes Discord message links into clean embeds with delete buttons and no extra dependencies. | `[p]linkquote [link]`<br>`[p]linkquoteset [toggle\|delete\|mode\|whitelist\|ignorechannel\|ignorerole\|allowrole\|settings]` |
-| **NoPings** | Prevents notification pings when the bot replies to commands. Includes personal opt-in toggles and server-wide admin controls. | `[p]noping`, `[p]nopings test [member]`<br>`[p]nopings set [toggle\|add\|remove\|showsettings]` |
 | **PKLens** | A lightweight, privacy-focused PluralKit inspector. View public system profiles and fronters silently with 1-click view switching. | `/pklens`, `/pkfronters <user>`, `/pkprofile <user>`<br>Apps (Context Menus): `Fronter`, `Profile` |
 
 ---
@@ -59,7 +58,6 @@ In accordance with Red-DiscordBot standards, all cogs declare their data retenti
 | **advancedinviteV2** | ❌ No | Does not store user data. |
 | **Fox** | ❌ No | Does not store user data. |
 | **LinkQuoter** | ❌ No | Does not store user data. |
-| **NoPings** | ⚠️ Yes | Stores User IDs solely for personal opt-in and server-specific no-ping lists. Supports `[p]mydata` deletion. |
 | **PKLens** | ❌ No | Ephemeral PluralKit API lookups only; no data is persistently stored. |
 
 ---
